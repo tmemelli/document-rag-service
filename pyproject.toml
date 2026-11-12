@@ -21,10 +21,15 @@ dependencies = [
     "pymupdf>=1.28.2",
     "python-docx>=1.2.0",
     "python-multipart>=0.0.33",
-    "sentence-transformers>=6.1.0",
     "sqlalchemy>=2.0.54",
     "striprtf>=0.0.33",
+    "transformers>=5.17.0",
     "uvicorn[standard]>=0.54.0",
+]
+
+[project.optional-dependencies]
+local = [
+    "sentence-transformers>=6.3.0",
 ]
 
 
