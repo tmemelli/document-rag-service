@@ -1,0 +1,1357 @@
+[
+  {
+    "id": "study-in-scarlet-author",
+    "query": "Quem é o autor de Um Estudo em Vermelho?",
+    "document_ids": [
+      1
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 1,
+        "chunk_index": 0
+      }
+    ]
+  },
+  {
+    "id": "study-in-scarlet-publication-year",
+    "query": "Em que ano Um Estudo em Vermelho foi publicado originalmente?",
+    "document_ids": [
+      1
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 1,
+        "chunk_index": 0
+      }
+    ]
+  },
+  {
+    "id": "watson-maiwand-injury-and-rescue",
+    "query": "Que ferimento Watson sofreu na Batalha de Maiwand e quem o impediu de cair nas mãos dos ghazis?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 1,
+        "chunk_index": 2
+      }
+    ]
+  },
+  {
+    "id": "holmes-blood-reagent-forensic-problem",
+    "query": "Qual problema da medicina legal a reação criada por Holmes pretendia resolver ao examinar manchas antigas em roupas?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 1,
+        "chunk_index": 15
+      }
+    ]
+  },
+  {
+    "id": "holmes-brain-attic-principle",
+    "query": "Por que Holmes compara o cérebro a um sótão vazio, e que princípio usa para decidir quais conhecimentos devem ocupar esse espaço?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 1,
+        "chunk_index": 26
+      }
+    ]
+  },
+  {
+    "id": "holmes-practical-knowledge-profile",
+    "query": "Quais habilidades práticas e áreas de conhecimento Watson registra como pontos fortes de Holmes ao tentar descobrir sua profissão?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 1,
+        "chunk_index": 29
+      }
+    ]
+  },
+  {
+    "id": "watson-left-arm-deduction",
+    "query": "Que detalhe na maneira como Watson mantinha o braço esquerdo ajudou Holmes a reconstruir sua experiência militar?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 1,
+        "chunk_index": 41
+      }
+    ]
+  },
+  {
+    "id": "marine-sergeant-visual-clues",
+    "query": "Quais sinais visuais levaram Holmes a identificar o mensageiro como um antigo sargento das forças navais?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 1,
+        "chunk_index": 47
+      }
+    ]
+  },
+  {
+    "id": "lauriston-gardens-death-paradox",
+    "query": "Que combinação de circunstâncias tornava a morte encontrada em Lauriston Gardens especialmente enigmática na carta enviada a Holmes?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 1,
+        "chunk_index": 49
+      }
+    ]
+  },
+  {
+    "id": "gold-ring-advertisement-trap",
+    "query": "Que artifício Holmes usa no anúncio sobre a aliança encontrada para tentar atrair alguém ligado ao crime?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 1,
+        "chunk_index": 94
+      }
+    ]
+  },
+  {
+    "id": "two-pills-one-poison",
+    "query": "O que Holmes descobre ao testar separadamente as duas pílulas encontradas durante a investigação?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 1,
+        "chunk_index": 141
+      }
+    ]
+  },
+  {
+    "id": "jefferson-hope-arrest",
+    "query": "Quem Holmes apresenta como responsável pelas mortes de Enoch Drebber e Joseph Stangerson quando o cocheiro é algemado?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 1,
+        "chunk_index": 149
+      }
+    ]
+  },
+  {
+    "id": "killer-was-the-cabman-inference",
+    "query": "Como as marcas da carruagem ajudaram Holmes a concluir que o homem que entrou com Drebber na casa era o próprio cocheiro?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 1,
+        "chunk_index": 291
+      }
+    ]
+  },
+  {
+    "id": "origin-species-author",
+    "query": "Quem é o autor de A Origem das Espécies?",
+    "document_ids": [
+      2
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 2,
+        "chunk_index": 0
+      }
+    ]
+  },
+  {
+    "id": "darwin-among-multiple-documents",
+    "query": "Qual dos documentos selecionados é uma obra de Charles Darwin?",
+    "document_ids": [
+      1,
+      2,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 2,
+        "chunk_index": 0
+      }
+    ]
+  },
+  {
+    "id": "malthus-struggle-natural-selection",
+    "query": "Como Darwin liga o crescimento geométrico das populações, a luta pela existência e a seleção natural?",
+    "document_ids": [
+      1,
+      2,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 2,
+        "chunk_index": 45
+      }
+    ]
+  },
+  {
+    "id": "sexual-selection-beauty",
+    "query": "Como o texto explica a origem de cores vistosas e outros traços de beleza em certos animais por meio da escolha de parceiros?",
+    "document_ids": [
+      2
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 2,
+        "chunk_index": 624
+      }
+    ]
+  },
+  {
+    "id": "honeycomb-efficiency-wax",
+    "query": "Por que aproximar e regularizar as células de um favo poderia favorecer abelhas ao economizar trabalho e cera?",
+    "document_ids": [
+      2
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 2,
+        "chunk_index": 852
+      }
+    ]
+  },
+  {
+    "id": "instincts-change-by-selection",
+    "query": "De que maneira pequenas variações úteis de instinto poderiam se acumular segundo a seleção natural?",
+    "document_ids": [
+      2
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 2,
+        "chunk_index": 877
+      }
+    ]
+  },
+  {
+    "id": "hybrid-sterility-not-natural-selection",
+    "query": "Por que Darwin rejeita a ideia de que a seleção natural tenha produzido diretamente a esterilidade dos primeiros cruzamentos e dos híbridos?",
+    "document_ids": [
+      2
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 2,
+        "chunk_index": 982
+      }
+    ]
+  },
+  {
+    "id": "galapagos-cape-verde-biogeography",
+    "query": "Como a relação das espécies das Galápagos com a América e das ilhas de Cabo Verde com a África é usada para defender uma origem por descendência e dispersão?",
+    "document_ids": [
+      2
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 2,
+        "chunk_index": 1313
+      }
+    ]
+  },
+  {
+    "id": "analogous-similarity-vs-real-affinity",
+    "query": "Que distinção o texto faz entre afinidade real e semelhança de adaptação ao comparar animais de grupos diferentes com formas corporais parecidas?",
+    "document_ids": [
+      2
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 2,
+        "chunk_index": 1380
+      }
+    ]
+  },
+  {
+    "id": "embryos-similar-adults-different",
+    "query": "Como a hereditariedade das modificações na idade em que surgem ajuda a explicar por que embriões podem ser semelhantes enquanto os adultos têm membros com funções muito diferentes?",
+    "document_ids": [
+      2
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 2,
+        "chunk_index": 1451
+      }
+    ]
+  },
+  {
+    "id": "rudimentary-organs-ostrich-wings",
+    "query": "Por que as asas quase inúteis do avestruz são tratadas como vestígios de um estado antigo, e não como estruturas produzidas diretamente para sua função atual?",
+    "document_ids": [
+      2
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 2,
+        "chunk_index": 1470
+      }
+    ]
+  },
+  {
+    "id": "why-living-intermediate-forms-are-rare",
+    "query": "Por que a teoria não exige que hoje encontremos numerosas formas intermediárias vivas ligando diretamente espécies próximas?",
+    "document_ids": [
+      2
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 2,
+        "chunk_index": 1502
+      }
+    ]
+  },
+  {
+    "id": "natural-selection-not-exclusive-agent",
+    "query": "Como Darwin responde à acusação de que atribuía todas as modificações das espécies exclusivamente à seleção natural?",
+    "document_ids": [
+      2
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 2,
+        "chunk_index": 1553
+      }
+    ]
+  },
+  {
+    "id": "rudimentary-organs-as-evolutionary-evidence",
+    "query": "Que tipo de informação os órgãos rudimentares e a embriologia podem fornecer sobre formas ancestrais e estruturas perdidas?",
+    "document_ids": [
+      2
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 2,
+        "chunk_index": 1575
+      }
+    ]
+  },
+  {
+    "id": "war-of-nature-outcome",
+    "query": "Segundo a conclusão da obra, como a luta pela existência, a seleção natural, a divergência de caracteres e a extinção se encadeiam?",
+    "document_ids": [
+      2
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 2,
+        "chunk_index": 1583
+      }
+    ]
+  },
+  {
+    "id": "sherlock-train-carriage",
+    "query": "No início do encontro com a jovem que chega a Baker Street pela manhã, quais detalhes específicos na roupa e na mão dela levam Sherlock Holmes a deduzir imediatamente que ela viajou de trem e de carruagem aberta?",
+    "document_ids": [
+      1,
+      2,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 3,
+        "chunk_index": 6
+      }
+    ]
+  },
+  {
+    "id": "speckled-band-room-modifications",
+    "query": "Por que a combinação de uma abertura de ventilação, um cordão de campainha que não funcionava e uma cama presa ao chão parece suspeita a Holmes?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 3,
+        "chunk_index": 49
+      }
+    ]
+  },
+  {
+    "id": "engineer-counterfeit-machine-purpose",
+    "query": "Qual era a verdadeira finalidade da máquina apresentada ao engenheiro como equipamento para trabalhar greda?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 3,
+        "chunk_index": 109
+      }
+    ]
+  },
+  {
+    "id": "engineer-thumb-attack",
+    "query": "Como o engenheiro perdeu o polegar ao tentar escapar pela janela?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 3,
+        "chunk_index": 102
+      }
+    ]
+  },
+  {
+    "id": "noble-bachelor-american-clue",
+    "query": "Por que Holmes conclui que a pessoa capaz de mudar repentinamente os planos da noiva desaparecida provavelmente vinha da América?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 3,
+        "chunk_index": 162
+      }
+    ]
+  },
+  {
+    "id": "noble-bachelor-river-clothes-misleading",
+    "query": "Por que Holmes rejeita a conclusão de que encontrar as roupas da noiva no rio significava que seu corpo também deveria estar por perto?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 3,
+        "chunk_index": 144
+      }
+    ]
+  },
+  {
+    "id": "beryl-coronet-number-and-value",
+    "query": "Quantos berilos compunham a coroa entregue como garantia e como seu valor era descrito?",
+    "document_ids": [
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 3,
+        "chunk_index": 174
+      }
+    ]
+  },
+  {
+    "id": "beryl-coronet-missing-stones",
+    "query": "O que o banqueiro encontra de errado na coroa ao surpreender Arthur com a joia nas mãos?",
+    "document_ids": [
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 3,
+        "chunk_index": 186
+      }
+    ]
+  },
+  {
+    "id": "beryl-coronet-arthur-protected-secret",
+    "query": "Por que Holmes considera plausível que Arthur aceitasse ser acusado em vez de revelar quem realmente havia levado a joia até a janela?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 3,
+        "chunk_index": 222
+      }
+    ]
+  },
+  {
+    "id": "copper-beeches-hair-condition",
+    "query": "Qual condição incomum do emprego faz Violet Hunter inicialmente recusar a oferta de governanta?",
+    "document_ids": [
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 3,
+        "chunk_index": 239
+      }
+    ]
+  },
+  {
+    "id": "copper-beeches-impersonation-purpose",
+    "query": "Por que Holmes conclui que Violet Hunter foi escolhida para usar o vestido azul, cortar o cabelo e aparecer diante da janela?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 3,
+        "chunk_index": 276
+      }
+    ]
+  },
+  {
+    "id": "copper-beeches-dog-sentinel",
+    "query": "Que característica do animal que circulava à noite pelas Faias Roxas fazia com que ele funcionasse como uma sentinela assustadora?",
+    "document_ids": [
+      1,
+      3
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 3,
+        "chunk_index": 264
+      }
+    ]
+  },
+  {
+    "id": "hilux-edr-recorded-data",
+    "query": "Quais informações o gravador de dados de eventos (EDR) da Hilux pode registrar durante uma colisão grave?",
+    "document_ids": [
+      4
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 4,
+        "chunk_index": 19
+      }
+    ]
+  },
+  {
+    "id": "hilux-flat-tire-while-driving",
+    "query": "O que o motorista deve fazer se um pneu furar durante a condução e quais sinais o veículo pode apresentar?",
+    "document_ids": [
+      4
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 4,
+        "chunk_index": 265
+      }
+    ]
+  },
+  {
+    "id": "hilux-tss-purpose-and-limitations",
+    "query": "Qual é a finalidade do Toyota Safety Sense e por que o motorista não deve confiar totalmente no sistema?",
+    "document_ids": [
+      4
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 4,
+        "chunk_index": 345
+      }
+    ]
+  },
+  {
+    "id": "hilux-lane-departure-assist",
+    "query": "Como o Alerta de Desvio de Faixa (LDA) identifica uma possível saída da faixa e de que forma pode auxiliar o motorista?",
+    "document_ids": [
+      4
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 4,
+        "chunk_index": 378
+      }
+    ]
+  },
+  {
+    "id": "hilux-tire-pressure-fuel-consumption",
+    "query": "Segundo o manual, como a pressão incorreta dos pneus pode afetar o consumo de combustível?",
+    "document_ids": [
+      4
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 4,
+        "chunk_index": 534
+      }
+    ]
+  },
+  {
+    "id": "hilux-cyberattack-nongenuine-electronics",
+    "query": "Que risco é associado à instalação de dispositivos eletrônicos e rádios não genuínos no veículo?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 4,
+        "chunk_index": 15
+      }
+    ]
+  },
+  {
+    "id": "hilux-children-left-unattended",
+    "query": "Por que o manual orienta a nunca deixar crianças desacompanhadas dentro do veículo?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 4,
+        "chunk_index": 24
+      }
+    ]
+  },
+  {
+    "id": "hilux-towing-breakin-800km",
+    "query": "Durante o período de amaciamento, por quantos quilômetros a Toyota recomenda não usar o veículo para rebocar carga?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 4,
+        "chunk_index": 282
+      }
+    ]
+  },
+  {
+    "id": "hilux-submerged-vehicle-escape",
+    "query": "Se a Hilux estiver submersa e a porta não puder ser aberta, quais alternativas de saída o manual orienta antes e depois de a pressão da água se igualar?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 4,
+        "chunk_index": 744
+      },
+      {
+        "document_id": 4,
+        "chunk_index": 745
+      }
+    ]
+  },
+  {
+    "id": "hilux-diesel-runs-out-restart",
+    "query": "Se o combustível acabar e o motor parar subitamente, quais etapas devem ser realizadas antes de tentar dar partida novamente?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 4,
+        "chunk_index": 840
+      },
+      {
+        "document_id": 4,
+        "chunk_index": 841
+      }
+    ]
+  },
+  {
+    "id": "cosmology-supernovae-accelerating-universe",
+    "query": "Que descoberta feita em 1998 com observações de supernovas mudou a visão sobre a expansão do universo?",
+    "document_ids": [
+      5
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 5,
+        "chunk_index": 0
+      }
+    ]
+  },
+  {
+    "id": "cosmology-hubble-friedmann-expansion",
+    "query": "Quem descobriu observacionalmente a expansão do universo em 1929 e quem havia previsto modelos expansionistas antes disso?",
+    "document_ids": [
+      5
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 5,
+        "chunk_index": 6
+      }
+    ]
+  },
+  {
+    "id": "cosmology-big-bang-observational-pillars",
+    "query": "Quais evidências observacionais apresentadas no artigo sustentam a cosmologia do big-bang, incluindo a expansão, os elementos leves e a radiação de fundo?",
+    "document_ids": [
+      5
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 5,
+        "chunk_index": 8
+      },
+      {
+        "document_id": 5,
+        "chunk_index": 9
+      }
+    ]
+  },
+  {
+    "id": "cosmology-hubble-deceleration-density-parameters",
+    "query": "O que medem os parâmetros H0, q0 e o parâmetro de densidade na descrição dinâmica do universo?",
+    "document_ids": [
+      5
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 5,
+        "chunk_index": 11
+      }
+    ]
+  },
+  {
+    "id": "cosmology-age-problem-globular-clusters",
+    "query": "Qual era o problema de idade do modelo com matéria escura fria quando comparado aos aglomerados globulares mais antigos?",
+    "document_ids": [
+      5
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 5,
+        "chunk_index": 13
+      }
+    ]
+  },
+  {
+    "id": "cosmology-einstein-cosmological-constant",
+    "query": "Por que Einstein introduziu originalmente a constante cosmológica e como ele passou a enxergá-la após a descoberta da expansão das galáxias?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 5,
+        "chunk_index": 15
+      },
+      {
+        "document_id": 5,
+        "chunk_index": 16
+      }
+    ]
+  },
+  {
+    "id": "cosmology-supernova-search-method",
+    "query": "Como as equipes de Brian Schmidt e Saul Perlmutter organizaram a busca sistemática por supernovas raras em muitas galáxias?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 5,
+        "chunk_index": 23
+      }
+    ]
+  },
+  {
+    "id": "cosmology-quintessence-seventy-percent",
+    "query": "Segundo o artigo, aproximadamente que fração do conteúdo cósmico corresponde à componente que acelera o universo e por que ela recebe o nome de quintessência?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 5,
+        "chunk_index": 29
+      },
+      {
+        "document_id": 5,
+        "chunk_index": 30
+      }
+    ]
+  },
+  {
+    "id": "cosmology-negative-pressure-acceleration",
+    "query": "No contexto da relatividade geral, qual propriedade de pressão uma componente extra precisa ter para produzir expansão acelerada?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 5,
+        "chunk_index": 34
+      },
+      {
+        "document_id": 5,
+        "chunk_index": 35
+      }
+    ]
+  },
+  {
+    "id": "cosmology-vacuum-energy-120-orders",
+    "query": "Qual discrepância de cerca de 120 ordens de magnitude caracteriza o problema da constante cosmológica?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 5,
+        "chunk_index": 37
+      }
+    ]
+  },
+  {
+    "id": "lgpd-personal-data-physical-or-digital",
+    "query": "A LGPD protege dados pessoais apenas em meio digital ou também dados produzidos e tratados em meios físicos?",
+    "document_ids": [
+      6
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 6,
+        "chunk_index": 4
+      },
+      {
+        "document_id": 6,
+        "chunk_index": 5
+      }
+    ]
+  },
+  {
+    "id": "lgpd-personal-data-publication-transparency",
+    "query": "Um dado pessoal publicado em portal de transparência deixa de ser dado pessoal e pode ser reutilizado livremente para propaganda?",
+    "document_ids": [
+      6
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 6,
+        "chunk_index": 7
+      }
+    ]
+  },
+  {
+    "id": "lgpd-sensitive-data-examples",
+    "query": "Quais tipos de informação são classificados como dados pessoais sensíveis pela LGPD?",
+    "document_ids": [
+      6
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 6,
+        "chunk_index": 8
+      }
+    ]
+  },
+  {
+    "id": "lgpd-anonymized-data-definition",
+    "query": "Como o guia define dado anonimizado e que técnicas podem ser usadas para impedir a identificação do titular?",
+    "document_ids": [
+      6
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 6,
+        "chunk_index": 9
+      }
+    ]
+  },
+  {
+    "id": "lgpd-pseudonymized-data-definition",
+    "query": "Qual é a diferença central da pseudonimização, em que a associação ao indivíduo depende de informação adicional mantida separadamente?",
+    "document_ids": [
+      6
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 6,
+        "chunk_index": 10
+      }
+    ]
+  },
+  {
+    "id": "lgpd-data-lifecycle-stages",
+    "query": "Quais etapas do ciclo do dado o guia descreve desde a coleta até a eliminação?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 6,
+        "chunk_index": 12
+      }
+    ]
+  },
+  {
+    "id": "lgpd-treatment-termination",
+    "query": "Em quais situações o tratamento de dados pessoais pode ser considerado encerrado segundo o guia?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 6,
+        "chunk_index": 13
+      }
+    ]
+  },
+  {
+    "id": "lgpd-legal-bases-without-only-consent",
+    "query": "Além do consentimento, quais situações citadas no guia podem fundamentar o tratamento de dados pessoais?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 6,
+        "chunk_index": 15
+      }
+    ]
+  },
+  {
+    "id": "lgpd-controller-vs-operator",
+    "query": "Na LGPD, qual é a diferença entre controlador e operador no tratamento de dados pessoais?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 6,
+        "chunk_index": 16
+      }
+    ]
+  },
+  {
+    "id": "lgpd-dpo-and-anpd-roles",
+    "query": "Qual é o papel do encarregado de dados (DPO) e qual é a função da Autoridade Nacional de Proteção de Dados (ANPD)?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 6,
+        "chunk_index": 17
+      }
+    ]
+  },
+  {
+    "id": "petrobras-operational-emissions-reduction-2015-2022",
+    "query": "Quanto as emissões operacionais absolutas de gases de efeito estufa da Petrobras caíram entre 2015 e 2022 e qual ambição de longo prazo foi declarada?",
+    "document_ids": [
+      7
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 7,
+        "chunk_index": 5
+      }
+    ]
+  },
+  {
+    "id": "petrobras-low-carbon-business-areas",
+    "query": "Quais áreas de novos negócios de baixo carbono a Petrobras declarou pretender desenvolver a partir de 2023?",
+    "document_ids": [
+      7
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 7,
+        "chunk_index": 6
+      }
+    ]
+  },
+  {
+    "id": "petrobras-water-waste-reduction-recycling",
+    "query": "Quais reduções recentes em captação de água doce e geração de resíduos foram relatadas e qual percentual de reutilização e reciclagem foi atingido em 2022?",
+    "document_ids": [
+      7
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 7,
+        "chunk_index": 7
+      }
+    ]
+  },
+  {
+    "id": "petrobras-low-carbon-investment-share-2024-2028",
+    "query": "Qual faixa do investimento total foi indicada para projetos de baixo carbono no Plano Estratégico Petrobras 2024–2028?",
+    "document_ids": [
+      7
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 7,
+        "chunk_index": 9
+      }
+    ]
+  },
+  {
+    "id": "petrobras-environmental-indicators-2022",
+    "query": "No quadro de indicadores ambientais, quais valores de 2022 são informados para emissões de GEE, intensidade de metano no E&P e captação de água doce?",
+    "document_ids": [
+      7
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 7,
+        "chunk_index": 145
+      }
+    ]
+  },
+  {
+    "id": "petrobras-scope-1-2-3-material-topic",
+    "query": "Como o tema material de resiliência climática da Petrobras abrange as emissões de gases de efeito estufa dos escopos 1, 2 e 3?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 7,
+        "chunk_index": 37
+      },
+      {
+        "document_id": 7,
+        "chunk_index": 38
+      }
+    ]
+  },
+  {
+    "id": "petrobras-biodiversity-mitigation-hierarchy",
+    "query": "Qual hierarquia de atuação o relatório descreve para lidar com riscos e impactos à biodiversidade ao longo do ciclo de vida dos empreendimentos?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 7,
+        "chunk_index": 39
+      }
+    ]
+  },
+  {
+    "id": "petrobras-local-community-negative-impacts",
+    "query": "Que tipos de impactos negativos sobre comunidades locais e tradicionais são citados no tema material da Petrobras?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 7,
+        "chunk_index": 40
+      },
+      {
+        "document_id": 7,
+        "chunk_index": 41
+      }
+    ]
+  },
+  {
+    "id": "petrobras-mar-azul-program",
+    "query": "Qual é o objetivo do Programa Mar Azul citado entre as iniciativas de prevenção de acidentes nas operações offshore?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 7,
+        "chunk_index": 348
+      }
+    ]
+  },
+  {
+    "id": "petrobras-freshwater-target-2030",
+    "query": "Qual meta de redução da captação de água doce a Petrobras estabeleceu para 2030 e qual ano-base passou a ser utilizado?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 7,
+        "chunk_index": 450
+      },
+      {
+        "document_id": 7,
+        "chunk_index": 451
+      }
+    ]
+  },
+  {
+    "id": "rag-paper-provenance-and-updating-knowledge",
+    "query": "According to the paper, what two open problems remain for large pretrained language models regarding provenance and world knowledge?",
+    "document_ids": [
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 8,
+        "chunk_index": 0
+      }
+    ]
+  },
+  {
+    "id": "rag-paper-parametric-nonparametric-memory",
+    "query": "How does the paper combine parametric and non-parametric memory in its RAG formulation?",
+    "document_ids": [
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 8,
+        "chunk_index": 1
+      }
+    ]
+  },
+  {
+    "id": "rag-paper-sequence-vs-token",
+    "query": "What is the key difference between RAG-Sequence and RAG-Token in how retrieved documents are used during generation?",
+    "document_ids": [
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 8,
+        "chunk_index": 9
+      },
+      {
+        "document_id": 8,
+        "chunk_index": 10
+      }
+    ]
+  },
+  {
+    "id": "rag-paper-dpr-mips-index",
+    "query": "How does the DPR retriever represent queries and documents, and what search problem is used to obtain the top-k documents?",
+    "document_ids": [
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 8,
+        "chunk_index": 11
+      },
+      {
+        "document_id": 8,
+        "chunk_index": 12
+      }
+    ]
+  },
+  {
+    "id": "rag-paper-bart-parametric-memory",
+    "query": "Which generator architecture is used in the paper, how large is it, and what do the authors call its parameters?",
+    "document_ids": [
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 8,
+        "chunk_index": 12
+      },
+      {
+        "document_id": 8,
+        "chunk_index": 13
+      }
+    ]
+  },
+  {
+    "id": "rag-paper-fixed-document-encoder",
+    "query": "Durante o treinamento do RAG, por que os autores mantêm o codificador de documentos e o índice fixos, e quais componentes são ajustados?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 8,
+        "chunk_index": 14
+      }
+    ]
+  },
+  {
+    "id": "rag-paper-thorough-decoding",
+    "query": "Por que o RAG-Sequence não pode ser decodificado com uma única beam search convencional e o que os autores chamam de Thorough Decoding?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 8,
+        "chunk_index": 15
+      }
+    ]
+  },
+  {
+    "id": "rag-paper-open-domain-datasets-msmarco",
+    "query": "Quais conjuntos de dados de open-domain QA são avaliados no artigo e como o MSMARCO é usado para testar geração abstrativa?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 8,
+        "chunk_index": 18
+      },
+      {
+        "document_id": 8,
+        "chunk_index": 19
+      }
+    ]
+  },
+  {
+    "id": "rag-paper-open-book-closed-book-results",
+    "query": "Como os autores caracterizam a vantagem do RAG ao combinar flexibilidade de modelos closed-book com desempenho de abordagens open-book?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 8,
+        "chunk_index": 23
+      },
+      {
+        "document_id": 8,
+        "chunk_index": 24
+      }
+    ]
+  },
+  {
+    "id": "rag-paper-answer-not-retrieved-accuracy",
+    "query": "Que precisão o RAG alcançou em Natural Questions quando a resposta correta não estava presente em nenhum documento recuperado, e por que um modelo extrativo teria pontuação zero nesses casos?",
+    "document_ids": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "relevant_chunks": [
+      {
+        "document_id": 8,
+        "chunk_index": 25
+      }
+    ]
+  }
+]
