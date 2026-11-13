@@ -5,7 +5,7 @@ This module creates the HTTP application, applies cross-origin access rules,
 attaches the application lifespan, and registers the public API router.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from document_rag_service.api.routes import api_router
@@ -42,5 +42,12 @@ app.add_middleware(
         "Retry-After",
     ],
 )
+
+
+@app.head("/", include_in_schema=False)
+async def root_head() -> Response:
+    """Respond to infrastructure probes against the application root."""
+    return Response(status_code=204)
+
 
 app.include_router(api_router)
