@@ -44,6 +44,15 @@ app.add_middleware(
 )
 
 
+@app.get("/", include_in_schema=False)
+async def root() -> dict[str, str]:
+    """Return basic service information."""
+    return {
+        "service": "document-rag-service",
+        "status": "ok",
+    }
+
+
 @app.head("/", include_in_schema=False)
 async def root_head() -> Response:
     """Respond to infrastructure probes against the application root."""
