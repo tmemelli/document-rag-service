@@ -42,9 +42,11 @@ build-backend = "uv_build"
 dev = [
     "anyio>=4.15.1",
     "debugpy>=1.8.22",
+    "mypy>=2.4.1",
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1.post1",
     "ruff>=0.17.4",
+    "types-defusedxml>=0.7.0.20260504",
 ]
 
 
@@ -72,3 +74,8 @@ select = [
     "I",
     "UP",
 ]
+
+
+[[tool.mypy.overrides]]
+module = ["odf", "odf.*"]
+ignore_missing_imports = true

@@ -270,4 +270,4 @@ def get_settings() -> Settings:
         Validated and cached application settings.
     """
 
-    return Settings()  # pyright: ignore[reportCallIssue]
+    return Settings()  # type: ignore[call-arg]
