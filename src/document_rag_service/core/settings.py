@@ -54,6 +54,10 @@ class Settings(BaseSettings):
         default=5,
         ge=1,
     )
+    document_upload_rate_limit_per_minute: int = Field(
+        default=3,
+        ge=1,
+    )
     rag_rate_limit_per_minute: int = Field(
         default=5,
         ge=1,

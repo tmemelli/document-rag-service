@@ -337,6 +337,9 @@ class CloudflareEmbeddingProvider:
                 "Cloudflare embedding response is not valid JSON"
             ) from exc
 
+        if not isinstance(payload, dict):
+            raise RuntimeError("Cloudflare embedding response has invalid structure")
+
         if not payload.get("success"):
             raise RuntimeError(
                 "Cloudflare embedding request was not successful: "

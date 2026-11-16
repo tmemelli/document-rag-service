@@ -39,16 +39,16 @@ class AuthTokenService:
                 configured expiration is not positive.
         """
 
-        if not secret:
+        if not secret.strip():
             raise ValueError("JWT secret cannot be empty")
 
-        if not algorithm:
+        if not algorithm.strip():
             raise ValueError("JWT algorithm cannot be empty")
 
-        if not issuer:
+        if not issuer.strip():
             raise ValueError("JWT issuer cannot be empty")
 
-        if not audience:
+        if not audience.strip():
             raise ValueError("JWT audience cannot be empty")
 
         if expire_minutes <= 0:

@@ -74,26 +74,19 @@ def test_login_rate_limit_returns_429_and_retry_after(
         "password": "password123",
     }
 
-    headers = {
-        "X-Forwarded-For": "203.0.113.10",
-    }
-
     first_response = client.post(
         "/v1/auth/login",
         json=payload,
-        headers=headers,
     )
 
     second_response = client.post(
         "/v1/auth/login",
         json=payload,
-        headers=headers,
     )
 
     third_response = client.post(
         "/v1/auth/login",
         json=payload,
-        headers=headers,
     )
 
     assert first_response.status_code == 200
@@ -153,26 +146,19 @@ def test_register_rate_limit_returns_429_and_retry_after(
         "password": "password123",
     }
 
-    headers = {
-        "X-Forwarded-For": "203.0.113.10",
-    }
-
     first_response = client.post(
         "/v1/auth/register",
         json=payload,
-        headers=headers,
     )
 
     second_response = client.post(
         "/v1/auth/register",
         json=payload,
-        headers=headers,
     )
 
     third_response = client.post(
         "/v1/auth/register",
         json=payload,
-        headers=headers,
     )
 
     assert first_response.status_code == 201

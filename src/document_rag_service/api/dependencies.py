@@ -471,13 +471,11 @@ def _get_client_ip(request: Request) -> str | None:
     """
     Resolve the client IP used by IP-based rate-limit buckets.
 
-    When ``X-Forwarded-For`` is present, the first address is treated as the
-    original client address; otherwise the socket-level request client address
-    is used.
-
-    This behavior assumes that the production reverse proxy controls or
-    sanitizes forwarded-client headers. Proxy trust must therefore be verified
-    as part of deployment configuration.
+    The application deliberately trusts only ``request.client`` instead of
+    reading forwarding headers directly. In production, trusted proxy headers
+    should be resolved by the ASGI server before the request reaches the
+    application. This prevents clients from bypassing rate limits by supplying
+    a forged ``X-Forwarded-For`` header.
 
     Args:
         request: Current FastAPI request.
@@ -485,11 +483,6 @@ def _get_client_ip(request: Request) -> str | None:
     Returns:
         Client IP address when one can be identified, otherwise ``None``.
     """
-
-    forwarded_for = request.headers.get("x-forwarded-for")
-
-    if forwarded_for:
-        return forwarded_for.split(",", maxsplit=1)[0].strip()
 
     if request.client is not None:
         return request.client.host
@@ -601,6 +594,35 @@ async def enforce_login_rate_limit(
         rate_limiter=rate_limiter,
         key=f"auth:login:{client_ip}",
         limit=settings.auth_login_rate_limit_per_minute,
+    )
+
+
+async def enforce_document_upload_rate_limit(
+    current_user: CurrentUser,
+    rate_limiter: RateLimiterDependency,
+) -> None:
+    """
+    Enforce the per-user document-upload rate limit.
+
+    Document ingestion performs parsing, chunking, embedding generation, and
+    database writes, so the endpoint is protected independently from RAG
+    queries to limit authenticated resource abuse.
+
+    Args:
+        current_user: Authenticated active user.
+        rate_limiter: Shared application rate limiter.
+
+    Raises:
+        HTTPException: If the user's upload bucket has exceeded the configured
+            limit.
+    """
+
+    settings = get_settings()
+
+    await _enforce_rate_limit(
+        rate_limiter=rate_limiter,
+        key=f"documents:upload:user:{current_user.id}",
+        limit=settings.document_upload_rate_limit_per_minute,
     )
 
 

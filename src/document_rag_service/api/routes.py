@@ -22,6 +22,7 @@ from document_rag_service.api.dependencies import (
     IngestionServiceDependency,
     RagServiceDependency,
     UserServiceDependency,
+    enforce_document_upload_rate_limit,
     enforce_login_rate_limit,
     enforce_rag_rate_limit,
     enforce_register_rate_limit,
@@ -291,6 +292,7 @@ async def list_documents(
     status_code=status.HTTP_201_CREATED,
     tags=["Documents"],
     summary="Upload and ingest a document",
+    dependencies=[Depends(enforce_document_upload_rate_limit)],
 )
 async def upload_document(
     current_user: CurrentUser,
