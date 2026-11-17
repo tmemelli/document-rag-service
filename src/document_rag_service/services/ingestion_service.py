@@ -211,6 +211,10 @@ class IngestionService:
             raise ValueError(f"Document {document_id} not found")
 
         from_status = document.status
+        attempt_number = (
+            await self._status_history.get_latest_attempt_number(document.id)
+            or 1
+        )
 
         await self._documents.update_status(
             document=document,
@@ -223,6 +227,7 @@ class IngestionService:
             to_status="processing",
             component="ingestion_service",
             operation="persist_chunks",
+            attempt_number=attempt_number,
         )
 
         await self._session.commit()
@@ -258,6 +263,7 @@ class IngestionService:
                 to_status="ready",
                 component="ingestion_service",
                 operation="persist_chunks",
+                attempt_number=attempt_number,
             )
 
             await self._session.commit()
@@ -311,6 +317,10 @@ class IngestionService:
             return
 
         from_status = document.status
+        attempt_number = (
+            await self._status_history.get_latest_attempt_number(document.id)
+            or 1
+        )
 
         await self._documents.update_status(
             document=document,
@@ -323,6 +333,7 @@ class IngestionService:
             to_status="failed",
             component="ingestion_service",
             operation=operation,
+            attempt_number=attempt_number,
         )
 
         await self._errors.create(
@@ -333,6 +344,7 @@ class IngestionService:
             error_code=error_code,
             message=message,
             retryable=False,
+            attempt_number=attempt_number,
         )
 
         await self._session.commit()

@@ -49,11 +49,13 @@ def _build_service() -> tuple[
     document_repository.create = AsyncMock()
     document_repository.get_by_id = AsyncMock()
     document_repository.update_status = AsyncMock()
+    document_repository.claim_failed_for_retry = AsyncMock()
     document_repository.delete = AsyncMock()
     document_repository.list_by_ids = AsyncMock()
 
     status_history_repository = MagicMock()
     status_history_repository.create = AsyncMock()
+    status_history_repository.get_latest_attempt_number = AsyncMock()
 
     checksum_service = MagicMock()
     checksum_service.sha256 = MagicMock()
@@ -270,40 +272,95 @@ async def test_register_uploaded_document_rejects_duplicate_being_processed(
 
 
 @pytest.mark.asyncio
-async def test_register_uploaded_document_rejects_failed_duplicate_until_retry_exists() -> (
-    None
-):
-    """Reject failed duplicate content while retry support is unavailable."""
+async def test_register_uploaded_document_retries_failed_duplicate() -> None:
+    """Reserve a failed duplicate for a new ingestion attempt."""
     (
         service,
-        _,
+        session,
         documents,
-        _,
+        history,
         checksum,
     ) = _build_service()
 
     checksum.sha256.return_value = "failed-checksum"
 
+    failed_document = _build_document(
+        document_id=9,
+        status="failed",
+        checksum="failed-checksum",
+    )
+    claimed_document = _build_document(
+        document_id=9,
+        status="pending",
+        checksum="failed-checksum",
+    )
+
+    documents.get_by_checksum.return_value = failed_document
+    documents.claim_failed_for_retry.return_value = claimed_document
+    history.get_latest_attempt_number.return_value = 1
+
+    result = await service.register_uploaded_document(
+        user_id=42,
+        title="Retried document",
+        file_name="retry.pdf",
+        mime_type="application/pdf",
+        content=b"failed",
+    )
+
+    assert result is claimed_document
+
+    documents.claim_failed_for_retry.assert_awaited_once_with(
+        document_id=9,
+        user_id=42,
+        title="Retried document",
+        file_name="retry.pdf",
+        mime_type="application/pdf",
+    )
+    history.create.assert_awaited_once_with(
+        document_id=9,
+        from_status="failed",
+        to_status="pending",
+        component="document_service",
+        operation="retry_uploaded_document",
+        attempt_number=2,
+    )
+    session.commit.assert_awaited_once_with()
+    session.refresh.assert_awaited_once_with(claimed_document)
+
+
+@pytest.mark.asyncio
+async def test_register_uploaded_document_rejects_retry_claimed_concurrently() -> None:
+    """Reject retry when another request claims the failed document first."""
+    (
+        service,
+        _,
+        documents,
+        history,
+        checksum,
+    ) = _build_service()
+
+    checksum.sha256.return_value = "failed-checksum"
     documents.get_by_checksum.return_value = _build_document(
         document_id=9,
         status="failed",
         checksum="failed-checksum",
     )
+    documents.claim_failed_for_retry.return_value = None
+    history.get_latest_attempt_number.return_value = 1
 
     with pytest.raises(
         ValueError,
-        match=(
-            r"Document content already exists with failed status "
-            r"\(document_id=9\); retry is not implemented yet"
-        ),
+        match=(r"Document content is already being processed \(document_id=9\)"),
     ):
         await service.register_uploaded_document(
             user_id=42,
-            title="Failed document",
-            file_name="failed.pdf",
+            title="Retried document",
+            file_name="retry.pdf",
             mime_type="application/pdf",
             content=b"failed",
         )
+
+    history.create.assert_not_awaited()
 
 
 @pytest.mark.asyncio

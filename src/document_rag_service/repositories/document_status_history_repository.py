@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from document_rag_service.models.document_status_history import (
@@ -78,6 +78,30 @@ class DocumentStatusHistoryRepository:
         await self._session.refresh(history)
 
         return history
+
+    async def get_latest_attempt_number(
+        self,
+        document_id: int,
+    ) -> int | None:
+        """
+        Return the highest processing-attempt number recorded for a document.
+
+        Args:
+            document_id: Identifier of the document whose attempts should be
+                inspected.
+
+        Returns:
+            Highest persisted attempt number, or ``None`` when the document
+            has no status-history records.
+        """
+
+        statement = select(
+            func.max(DocumentStatusHistory.attempt_number)
+        ).where(
+            DocumentStatusHistory.document_id == document_id
+        )
+
+        return await self._session.scalar(statement)
 
     async def list_by_document_id(
         self,

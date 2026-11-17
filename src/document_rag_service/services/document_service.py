@@ -58,12 +58,12 @@ class DocumentService:
             content: Raw uploaded file content.
 
         Returns:
-            Newly registered document in the initial pending state.
+            Newly registered document in the initial pending state, or the
+            existing failed document reserved for a new ingestion attempt.
 
         Raises:
-            ValueError: If the same document content already exists for the
-                user, is currently being processed, or previously failed and
-                retry support is not available.
+            ValueError: If the same document content is already ready or is
+                currently being processed.
         """
 
         checksum = self._checksum.sha256(content)
@@ -87,11 +87,41 @@ class DocumentService:
                 )
 
             if existing_document.status == "failed":
-                raise ValueError(
-                    f"Document content already exists with failed status "
-                    f"(document_id={existing_document.id}); "
-                    "retry is not implemented yet"
+                latest_attempt = (
+                    await self._status_history.get_latest_attempt_number(
+                        existing_document.id
+                    )
+                    or 1
                 )
+                next_attempt = latest_attempt + 1
+
+                claimed_document = await self._documents.claim_failed_for_retry(
+                    document_id=existing_document.id,
+                    user_id=user_id,
+                    title=title,
+                    file_name=file_name,
+                    mime_type=mime_type,
+                )
+
+                if claimed_document is None:
+                    raise ValueError(
+                        f"Document content is already being processed "
+                        f"(document_id={existing_document.id})"
+                    )
+
+                await self._status_history.create(
+                    document_id=claimed_document.id,
+                    from_status="failed",
+                    to_status="pending",
+                    component="document_service",
+                    operation="retry_uploaded_document",
+                    attempt_number=next_attempt,
+                )
+
+                await self._session.commit()
+                await self._session.refresh(claimed_document)
+
+                return claimed_document
 
         return await self.register_document(
             user_id=user_id,

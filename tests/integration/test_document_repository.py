@@ -220,6 +220,51 @@ async def test_update_status_persists_new_status(
 
 
 @pytest.mark.asyncio
+async def test_claim_failed_for_retry_is_atomic_and_refreshes_metadata(
+    db_session: AsyncSession,
+) -> None:
+    """Claim one failed document once and move it back to pending."""
+    user = await _create_user(
+        db_session,
+        email="retry-claim@example.com",
+    )
+    document = await _create_document(
+        db_session,
+        user_id=user.id,
+        title="Original retry title",
+        checksum="retry-checksum",
+    )
+
+    repository = DocumentRepository(db_session)
+    await repository.update_status(document, "failed")
+
+    claimed = await repository.claim_failed_for_retry(
+        document_id=document.id,
+        user_id=user.id,
+        title="Retried title",
+        file_name="retried.pdf",
+        mime_type="application/pdf",
+    )
+
+    assert claimed is not None
+    assert claimed.id == document.id
+    assert claimed.status == "pending"
+    assert claimed.title == "Retried title"
+    assert claimed.file_name == "retried.pdf"
+    assert claimed.mime_type == "application/pdf"
+
+    second_claim = await repository.claim_failed_for_retry(
+        document_id=document.id,
+        user_id=user.id,
+        title="Concurrent retry",
+        file_name="concurrent.pdf",
+        mime_type="application/pdf",
+    )
+
+    assert second_claim is None
+
+
+@pytest.mark.asyncio
 async def test_list_all_returns_only_users_documents(
     db_session: AsyncSession,
 ) -> None:

@@ -64,6 +64,7 @@ def _build_service() -> tuple[
 
     status_history_repository = MagicMock()
     status_history_repository.create = AsyncMock()
+    status_history_repository.get_latest_attempt_number = AsyncMock(return_value=1)
 
     error_repository = MagicMock()
     error_repository.create = AsyncMock()
@@ -495,6 +496,7 @@ async def test_persist_chunks_transitions_document_to_processing() -> None:
         to_status="processing",
         component="ingestion_service",
         operation="persist_chunks",
+        attempt_number=1,
     )
 
 
@@ -685,6 +687,7 @@ async def test_persist_chunks_transitions_document_to_ready() -> None:
         to_status="ready",
         component="ingestion_service",
         operation="persist_chunks",
+        attempt_number=1,
     )
 
 
@@ -994,6 +997,7 @@ async def test_record_failure_transitions_document_to_failed() -> None:
         to_status="failed",
         component="ingestion_service",
         operation="persist_chunks",
+        attempt_number=1,
     )
 
 
@@ -1034,6 +1038,53 @@ async def test_record_failure_persists_structured_error_event() -> None:
         error_code="CHUNKING_FAILED",
         message="Failed to split document into valid chunks.",
         retryable=False,
+        attempt_number=1,
+    )
+
+
+@pytest.mark.asyncio
+async def test_record_failure_preserves_retry_attempt_number() -> None:
+    """Associate retry failures with the active ingestion attempt."""
+    (
+        service,
+        _,
+        documents,
+        _,
+        history,
+        errors,
+        _,
+        _,
+    ) = _build_service()
+
+    documents.get_by_id.return_value = _build_document(status="processing")
+    history.get_latest_attempt_number.return_value = 2
+
+    await service._record_failure(
+        document_id=1,
+        user_id=42,
+        operation="persist_chunks",
+        error_code="CHUNK_PERSISTENCE_FAILED",
+        message="Failed to persist document chunks.",
+        exception=RuntimeError("temporary failure"),
+    )
+
+    history.create.assert_awaited_once_with(
+        document_id=1,
+        from_status="processing",
+        to_status="failed",
+        component="ingestion_service",
+        operation="persist_chunks",
+        attempt_number=2,
+    )
+    errors.create.assert_awaited_once_with(
+        document_id=1,
+        component="ingestion_service",
+        operation="persist_chunks",
+        error_type="RuntimeError",
+        error_code="CHUNK_PERSISTENCE_FAILED",
+        message="Failed to persist document chunks.",
+        retryable=False,
+        attempt_number=2,
     )
 
 
@@ -1141,4 +1192,5 @@ async def test_record_failure_preserves_reloaded_document_status_as_from_status(
         to_status="failed",
         component="ingestion_service",
         operation="extract_text",
+        attempt_number=1,
     )

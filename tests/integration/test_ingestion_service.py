@@ -354,6 +354,190 @@ async def test_ingestion_failure_marks_document_failed_and_records_error(
 
 
 @pytest.mark.asyncio
+async def test_failed_document_can_be_retried_with_same_document_id(
+    db_session: AsyncSession,
+) -> None:
+    """Retry a failed upload without duplicating the document or history."""
+    user = await _create_user(
+        db_session,
+        email="ingestion-retry@example.com",
+    )
+
+    document_service = DocumentService(db_session)
+    content = _rtf_content(
+        "A transient provider failure should not permanently block the same "
+        "document from being ingested on a later upload attempt."
+    )
+
+    document = await document_service.register_uploaded_document(
+        user_id=user.id,
+        title="Retry ingestion",
+        file_name="retry.rtf",
+        mime_type="application/rtf",
+        content=content,
+    )
+    document_id = document.id
+    user_id = user.id
+
+    failing_ingestion = _build_ingestion_service(
+        db_session,
+        provider=FailingEmbeddingProvider(),
+    )
+
+    with pytest.raises(RuntimeError, match="Simulated embedding failure"):
+        await failing_ingestion.ingest_file_content(
+            document_id=document_id,
+            user_id=user_id,
+            content=content,
+            file_name="retry.rtf",
+        )
+
+    retried_document = await document_service.register_uploaded_document(
+        user_id=user_id,
+        title="Retry ingestion",
+        file_name="retry.rtf",
+        mime_type="application/rtf",
+        content=content,
+    )
+
+    assert retried_document.id == document_id
+    assert retried_document.status == "pending"
+
+    successful_ingestion = _build_ingestion_service(
+        db_session,
+        provider=FakeEmbeddingProvider(),
+    )
+
+    await successful_ingestion.ingest_file_content(
+        document_id=document_id,
+        user_id=user_id,
+        content=content,
+        file_name="retry.rtf",
+    )
+
+    document_repository = DocumentRepository(db_session)
+    chunk_repository = DocumentChunkRepository(db_session)
+    history_repository = DocumentStatusHistoryRepository(db_session)
+    error_repository = ErrorEventRepository(db_session)
+
+    persisted_document = await document_repository.get_by_id(
+        document_id=document_id,
+        user_id=user_id,
+    )
+    assert persisted_document is not None
+    assert persisted_document.status == "ready"
+
+    documents = await document_repository.list_all(user_id=user_id)
+    assert [item.id for item in documents] == [document_id]
+
+    chunks = await chunk_repository.list_by_document_id(document_id)
+    assert chunks
+
+    history = await history_repository.list_by_document_id(document_id)
+    assert [
+        (event.from_status, event.to_status, event.attempt_number)
+        for event in history
+    ] == [
+        (None, "pending", 1),
+        ("pending", "processing", 1),
+        ("processing", "failed", 1),
+        ("failed", "pending", 2),
+        ("pending", "processing", 2),
+        ("processing", "ready", 2),
+    ]
+
+    errors = await error_repository.list_by_document_id(document_id)
+    assert len(errors) == 1
+    assert errors[0].attempt_number == 1
+
+
+@pytest.mark.asyncio
+async def test_retried_ingestion_failure_records_second_attempt(
+    db_session: AsyncSession,
+) -> None:
+    """Keep first failure records and append a second failed attempt."""
+    user = await _create_user(
+        db_session,
+        email="ingestion-retry-fails-again@example.com",
+    )
+
+    document_service = DocumentService(db_session)
+    content = _rtf_content(
+        "Repeated transient failures should remain auditable across retries."
+    )
+
+    document = await document_service.register_uploaded_document(
+        user_id=user.id,
+        title="Retry fails again",
+        file_name="retry-fails-again.rtf",
+        mime_type="application/rtf",
+        content=content,
+    )
+    document_id = document.id
+    user_id = user.id
+
+    first_ingestion = _build_ingestion_service(
+        db_session,
+        provider=FailingEmbeddingProvider(),
+    )
+    with pytest.raises(RuntimeError, match="Simulated embedding failure"):
+        await first_ingestion.ingest_file_content(
+            document_id=document_id,
+            user_id=user_id,
+            content=content,
+            file_name="retry-fails-again.rtf",
+        )
+
+    retried_document = await document_service.register_uploaded_document(
+        user_id=user_id,
+        title="Retry fails again",
+        file_name="retry-fails-again.rtf",
+        mime_type="application/rtf",
+        content=content,
+    )
+    assert retried_document.id == document_id
+
+    second_ingestion = _build_ingestion_service(
+        db_session,
+        provider=FailingEmbeddingProvider(),
+    )
+    with pytest.raises(RuntimeError, match="Simulated embedding failure"):
+        await second_ingestion.ingest_file_content(
+            document_id=document_id,
+            user_id=user_id,
+            content=content,
+            file_name="retry-fails-again.rtf",
+        )
+
+    document_repository = DocumentRepository(db_session)
+    history_repository = DocumentStatusHistoryRepository(db_session)
+    error_repository = ErrorEventRepository(db_session)
+
+    persisted_document = await document_repository.get_by_id(
+        document_id=document_id,
+        user_id=user_id,
+    )
+    assert persisted_document is not None
+    assert persisted_document.status == "failed"
+
+    history = await history_repository.list_by_document_id(document_id)
+    assert [
+        (event.from_status, event.to_status, event.attempt_number)
+        for event in history
+    ] == [
+        (None, "pending", 1),
+        ("pending", "processing", 1),
+        ("processing", "failed", 1),
+        ("failed", "pending", 2),
+        ("pending", "processing", 2),
+        ("processing", "failed", 2),
+    ]
+
+    errors = await error_repository.list_by_document_id(document_id)
+    assert [error.attempt_number for error in errors] == [1, 2]
+
+
+@pytest.mark.asyncio
 async def test_failed_ingestion_rolls_back_partial_chunks(
     db_session: AsyncSession,
 ) -> None:

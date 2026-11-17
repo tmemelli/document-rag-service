@@ -20,7 +20,9 @@ from document_rag_service.api.dependencies import (
     get_embedding_service,
 )
 from document_rag_service.api.routes import api_router
+from document_rag_service.repositories.user_repository import UserRepository
 from document_rag_service.services.auth_token_service import AuthTokenService
+from document_rag_service.services.document_service import DocumentService
 from document_rag_service.services.embedding_service import EmbeddingService
 
 TEST_JWT_SECRET = "integration-test-secret-that-is-long-enough-for-jwt-signing"
@@ -219,6 +221,61 @@ async def test_upload_document_ingests_and_returns_ready_document(
     assert payload["file_name"] == "architecture.rtf"
     assert payload["mime_type"] == "application/rtf"
     assert payload["status"] == "ready"
+
+
+@pytest.mark.asyncio
+async def test_upload_retries_failed_document_without_creating_duplicate(
+    db_session: AsyncSession,
+) -> None:
+    """Re-upload failed content and reuse the existing document resource."""
+    email = "api-document-retry@example.com"
+    content = _rtf_content(
+        "A failed ingestion can be retried later using the same uploaded bytes."
+    )
+
+    async with await _build_client(db_session) as client:
+        token = await _register_user(client, email=email)
+
+        user = await UserRepository(db_session).get_by_email(email)
+        assert user is not None
+
+        document_service = DocumentService(db_session)
+        failed_document = await document_service.register_uploaded_document(
+            user_id=user.id,
+            title="Retry through API",
+            file_name="retry-api.rtf",
+            mime_type="application/rtf",
+            content=content,
+        )
+        await document_service.update_status(
+            document_id=failed_document.id,
+            user_id=user.id,
+            status="failed",
+        )
+
+        response = await client.post(
+            "/v1/documents/upload",
+            headers={"Authorization": f"Bearer {token}"},
+            data={"title": "Retry through API"},
+            files={
+                "file": (
+                    "retry-api.rtf",
+                    content,
+                    "application/rtf",
+                )
+            },
+        )
+
+        listed = await client.get(
+            "/v1/documents",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 201
+    assert response.json()["id"] == failed_document.id
+    assert response.json()["status"] == "ready"
+    assert listed.status_code == 200
+    assert [item["id"] for item in listed.json()] == [failed_document.id]
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 """Repository for document persistence and user-scoped lookup operations."""
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from document_rag_service.models.document import Document
@@ -214,6 +214,52 @@ class DocumentRepository:
         statement = select(Document).where(
             Document.checksum == checksum,
             Document.user_id == user_id,
+        )
+
+        return await self._session.scalar(statement)
+
+    async def claim_failed_for_retry(
+        self,
+        *,
+        document_id: int,
+        user_id: int,
+        title: str,
+        file_name: str,
+        mime_type: str,
+    ) -> Document | None:
+        """
+        Atomically reserve a failed document for a new ingestion attempt.
+
+        The conditional update prevents two concurrent uploads from claiming
+        the same failed document. A successful claim moves the document back
+        to ``pending`` and refreshes upload metadata from the latest request.
+
+        Args:
+            document_id: Identifier of the failed document to retry.
+            user_id: Identifier of the document owner.
+            title: Title supplied for the new upload attempt.
+            file_name: File name supplied for the new upload attempt.
+            mime_type: MIME type supplied for the new upload attempt.
+
+        Returns:
+            The claimed document in ``pending`` state, or ``None`` when the
+            document is no longer failed and therefore could not be claimed.
+        """
+
+        statement = (
+            update(Document)
+            .where(
+                Document.id == document_id,
+                Document.user_id == user_id,
+                Document.status == "failed",
+            )
+            .values(
+                title=title,
+                file_name=file_name,
+                mime_type=mime_type,
+                status="pending",
+            )
+            .returning(Document)
         )
 
         return await self._session.scalar(statement)

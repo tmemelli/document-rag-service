@@ -126,6 +126,56 @@ async def test_create_accepts_initial_transition_from_none(
 
 
 @pytest.mark.asyncio
+async def test_get_latest_attempt_number_returns_highest_attempt(
+    db_session: AsyncSession,
+) -> None:
+    """Return the highest attempt recorded for one document."""
+    user = await _create_user(
+        db_session,
+        email="history-latest-attempt@example.com",
+    )
+    document = await _create_document(
+        db_session,
+        user_id=user.id,
+        title="Latest attempt",
+    )
+
+    repository = DocumentStatusHistoryRepository(db_session)
+
+    await repository.create(
+        document_id=document.id,
+        from_status=None,
+        to_status="pending",
+        component="document_service",
+        operation="register_document",
+        attempt_number=1,
+    )
+    await repository.create(
+        document_id=document.id,
+        from_status="failed",
+        to_status="pending",
+        component="document_service",
+        operation="retry_uploaded_document",
+        attempt_number=2,
+    )
+
+    assert await repository.get_latest_attempt_number(document.id) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_latest_attempt_number_returns_none_without_history(
+    db_session: AsyncSession,
+) -> None:
+    """Return None when a document has no status-history records."""
+    assert (
+        await DocumentStatusHistoryRepository(
+            db_session
+        ).get_latest_attempt_number(9_999_999_999)
+        is None
+    )
+
+
+@pytest.mark.asyncio
 async def test_list_by_document_id_returns_only_matching_history(
     db_session: AsyncSession,
 ) -> None:
