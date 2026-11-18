@@ -2,6 +2,10 @@
 Document ingestion orchestration, lifecycle tracking, and chunk persistence.
 """
 
+import json
+import re
+from typing import Any
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from document_rag_service.repositories.document_chunk_repository import (
@@ -25,6 +29,34 @@ from document_rag_service.services.embedding_service import (
 from document_rag_service.services.text_extraction_service import (
     TextExtractionService,
 )
+
+_MAX_DIAGNOSTIC_MESSAGE_LENGTH = 4_000
+
+_BEARER_TOKEN_PATTERN = re.compile(
+    r"(?i)(\bbearer\s+)[A-Za-z0-9._~+/=-]+"
+)
+_SECRET_ASSIGNMENT_PATTERN = re.compile(
+    r"""(?ix)
+    (
+        \b(?:
+            password|passwd|pwd|secret|api[_-]?key|api[_-]?token|
+            access[_-]?token|refresh[_-]?token
+        )\b
+        ["']?\s*[:=]\s*
+    )
+    (?:
+        "(?:\\.|[^"])*"
+        |
+        '(?:\\.|[^'])*'
+        |
+        [^,\s;}\]&]+
+    )
+    """
+)
+_URL_CREDENTIAL_PATTERN = re.compile(
+    r"(?i)([a-z][a-z0-9+.-]*://[^:/\s]+:)[^@\s]+(@)"
+)
+_CLOUDFLARE_STATUS_PATTERN = re.compile(r"\bstatus=(\d{3})\b")
 
 
 class IngestionService:
@@ -301,9 +333,9 @@ class IngestionService:
             user_id: Identifier of the document owner.
             operation: Ingestion operation in which the failure occurred.
             error_code: Structured application error classification.
-            message: Safe diagnostic message persisted with the error event.
+            message: Safe operation-level summary of the failure.
             exception: Original exception used to record the concrete error
-                type.
+                type and sanitized technical diagnostics.
         """
 
         await self._session.rollback()
@@ -336,15 +368,177 @@ class IngestionService:
             attempt_number=attempt_number,
         )
 
+        diagnostic_details = self._build_error_details(
+            summary=message,
+            exception=exception,
+        )
+        diagnostic_message = (
+            f"{message} "
+            f"{diagnostic_details['exception_type']}: "
+            f"{diagnostic_details['exception_message']}"
+        )
+
         await self._errors.create(
             document_id=document.id,
             component="ingestion_service",
             operation=operation,
             error_type=type(exception).__name__,
             error_code=error_code,
-            message=message,
+            message=diagnostic_message,
+            details=diagnostic_details,
             retryable=False,
             attempt_number=attempt_number,
         )
 
         await self._session.commit()
+
+    @classmethod
+    def _build_error_details(
+        cls,
+        *,
+        summary: str,
+        exception: Exception,
+    ) -> dict[str, Any]:
+        """
+        Build safe structured diagnostics for a persisted error event.
+
+        The original exception message is retained only after redaction and
+        length bounding. Known Cloudflare embedding errors are additionally
+        decomposed into provider-specific fields so operational failures can be
+        inspected directly from ``error_events`` without searching application
+        logs.
+
+        Args:
+            summary: Safe operation-level description of the failure.
+            exception: Exception raised by the failed operation.
+
+        Returns:
+            JSON-serializable diagnostic metadata safe for database persistence.
+        """
+
+        raw_exception_message = str(exception)
+        exception_message = cls._sanitize_diagnostic_text(raw_exception_message)
+
+        details: dict[str, Any] = {
+            "summary": summary,
+            "exception_type": type(exception).__name__,
+            "exception_message": exception_message,
+        }
+
+        details.update(
+            cls._extract_cloudflare_error_details(raw_exception_message)
+        )
+
+        return details
+
+    @classmethod
+    def _sanitize_diagnostic_text(
+        cls,
+        value: str,
+    ) -> str:
+        """
+        Redact common credential forms and bound diagnostic message length.
+
+        Args:
+            value: Raw diagnostic text produced by an exception or provider.
+
+        Returns:
+            Redacted diagnostic text limited to a safe persistence size.
+        """
+
+        sanitized = value.strip()
+
+        sanitized = _BEARER_TOKEN_PATTERN.sub(
+            r"\1[REDACTED]",
+            sanitized,
+        )
+        sanitized = _SECRET_ASSIGNMENT_PATTERN.sub(
+            r"\1[REDACTED]",
+            sanitized,
+        )
+        sanitized = _URL_CREDENTIAL_PATTERN.sub(
+            r"\1[REDACTED]\2",
+            sanitized,
+        )
+
+        if len(sanitized) > _MAX_DIAGNOSTIC_MESSAGE_LENGTH:
+            return (
+                sanitized[: _MAX_DIAGNOSTIC_MESSAGE_LENGTH - 3]
+                + "..."
+            )
+
+        return sanitized
+
+    @classmethod
+    def _extract_cloudflare_error_details(
+        cls,
+        raw_exception_message: str,
+    ) -> dict[str, Any]:
+        """
+        Extract structured metadata from Cloudflare embedding error messages.
+
+        Cloudflare HTTP failures currently reach the ingestion layer as runtime
+        errors containing ``status=<code> body=<json>``. Only selected provider
+        fields are retained; the complete raw response is not copied into
+        structured metadata.
+
+        Args:
+            raw_exception_message: Unmodified exception message.
+
+        Returns:
+            Structured Cloudflare metadata when recognized, otherwise an empty
+            dictionary.
+        """
+
+        if "Cloudflare embedding" not in raw_exception_message:
+            return {}
+
+        details: dict[str, Any] = {
+            "provider": "cloudflare",
+        }
+
+        status_match = _CLOUDFLARE_STATUS_PATTERN.search(
+            raw_exception_message
+        )
+
+        if status_match is not None:
+            details["http_status"] = int(status_match.group(1))
+
+        body_marker = " body="
+
+        if body_marker not in raw_exception_message:
+            return details
+
+        raw_body = raw_exception_message.split(body_marker, maxsplit=1)[1]
+
+        try:
+            payload = json.loads(raw_body)
+        except (json.JSONDecodeError, TypeError):
+            return details
+
+        if not isinstance(payload, dict):
+            return details
+
+        errors = payload.get("errors")
+
+        if not isinstance(errors, list) or not errors:
+            return details
+
+        first_error = errors[0]
+
+        if not isinstance(first_error, dict):
+            return details
+
+        provider_code = first_error.get("code")
+
+        if isinstance(provider_code, int | str):
+            details["provider_code"] = provider_code
+
+        provider_message = first_error.get("message")
+
+        if isinstance(provider_message, str):
+            details["provider_message"] = cls._sanitize_diagnostic_text(
+                provider_message
+            )
+
+        return details

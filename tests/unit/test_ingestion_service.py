@@ -1036,7 +1036,15 @@ async def test_record_failure_persists_structured_error_event() -> None:
         operation="chunk_document",
         error_type="ValueError",
         error_code="CHUNKING_FAILED",
-        message="Failed to split document into valid chunks.",
+        message=(
+            "Failed to split document into valid chunks. "
+            "ValueError: sensitive internal detail"
+        ),
+        details={
+            "summary": "Failed to split document into valid chunks.",
+            "exception_type": "ValueError",
+            "exception_message": "sensitive internal detail",
+        },
         retryable=False,
         attempt_number=1,
     )
@@ -1082,15 +1090,23 @@ async def test_record_failure_preserves_retry_attempt_number() -> None:
         operation="persist_chunks",
         error_type="RuntimeError",
         error_code="CHUNK_PERSISTENCE_FAILED",
-        message="Failed to persist document chunks.",
+        message=(
+            "Failed to persist document chunks. "
+            "RuntimeError: temporary failure"
+        ),
+        details={
+            "summary": "Failed to persist document chunks.",
+            "exception_type": "RuntimeError",
+            "exception_message": "temporary failure",
+        },
         retryable=False,
         attempt_number=2,
     )
 
 
 @pytest.mark.asyncio
-async def test_record_failure_does_not_persist_raw_exception_message() -> None:
-    """Avoid leaking the original exception text into the stored error message."""
+async def test_record_failure_redacts_sensitive_exception_diagnostics() -> None:
+    """Persist technical diagnostics without retaining common credential forms."""
     (
         service,
         _,
@@ -1119,12 +1135,78 @@ async def test_record_failure_does_not_persist_raw_exception_message() -> None:
 
     assert errors.create.await_args is not None
 
-    assert (
-        errors.create.await_args.kwargs["message"]
-        == "Failed to persist document chunks."
+    stored_message = errors.create.await_args.kwargs["message"]
+    details = errors.create.await_args.kwargs["details"]
+
+    assert stored_message == (
+        "Failed to persist document chunks. "
+        "RuntimeError: database password=[REDACTED]"
+    )
+    assert details == {
+        "summary": "Failed to persist document chunks.",
+        "exception_type": "RuntimeError",
+        "exception_message": "database password=[REDACTED]",
+    }
+    assert "super-secret" not in stored_message
+    assert "super-secret" not in str(details)
+
+
+@pytest.mark.asyncio
+async def test_record_failure_extracts_cloudflare_provider_diagnostics() -> None:
+    """Persist Cloudflare HTTP and provider codes without requiring log lookup."""
+    (
+        service,
+        _,
+        documents,
+        _,
+        _,
+        errors,
+        _,
+        _,
+    ) = _build_service()
+
+    documents.get_by_id.return_value = _build_document(
+        status="processing",
     )
 
-    assert "super-secret" not in errors.create.await_args.kwargs["message"]
+    exception_message = (
+        "Cloudflare embedding request failed: status=400 "
+        'body={"errors":[{"message":"AiError: AiError: input too big '
+        '(df31816f-4106-46f6-b7d4-c347c6bdf91d)","code":3030}],'
+        '"success":false,"result":{},"messages":[]}'
+    )
+    exception = RuntimeError(exception_message)
+
+    await service._record_failure(
+        document_id=1,
+        user_id=42,
+        operation="persist_chunks",
+        error_code="CHUNK_PERSISTENCE_FAILED",
+        message="Failed to persist document chunks.",
+        exception=exception,
+    )
+
+    assert errors.create.await_args is not None
+
+    stored_message = errors.create.await_args.kwargs["message"]
+    details = errors.create.await_args.kwargs["details"]
+
+    assert stored_message == (
+        "Failed to persist document chunks. "
+        f"RuntimeError: {exception_message}"
+    )
+    assert details == {
+        "summary": "Failed to persist document chunks.",
+        "exception_type": "RuntimeError",
+        "exception_message": exception_message,
+        "provider": "cloudflare",
+        "http_status": 400,
+        "provider_code": 3030,
+        "provider_message": (
+            "AiError: AiError: input too big "
+            "(df31816f-4106-46f6-b7d4-c347c6bdf91d)"
+        ),
+    }
 
 
 @pytest.mark.asyncio

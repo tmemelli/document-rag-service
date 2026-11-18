@@ -349,7 +349,15 @@ async def test_ingestion_failure_marks_document_failed_and_records_error(
     assert error.document_id == document_id
     assert error.error_type == "RuntimeError"
     assert error.error_code == "CHUNK_PERSISTENCE_FAILED"
-    assert error.message == "Failed to persist document chunks."
+    assert error.message == (
+        "Failed to persist document chunks. "
+        "RuntimeError: Simulated embedding failure"
+    )
+    assert error.details == {
+        "summary": "Failed to persist document chunks.",
+        "exception_type": "RuntimeError",
+        "exception_message": "Simulated embedding failure",
+    }
     assert error.retryable is False
 
 
