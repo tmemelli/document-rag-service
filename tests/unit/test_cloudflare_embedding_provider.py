@@ -58,6 +58,24 @@ def _success_response(
     )
 
 
+def _input_too_large_response() -> httpx.Response:
+    """Create Cloudflare's aggregate-input-too-large error response."""
+    return _build_response(
+        status_code=400,
+        json_data={
+            "errors": [
+                {
+                    "message": "AiError: input too big",
+                    "code": 3030,
+                }
+            ],
+            "success": False,
+            "result": {},
+            "messages": [],
+        },
+    )
+
+
 def _build_provider(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -481,6 +499,195 @@ async def test_embed_documents_batches_requests(
         strict=True,
     ):
         assert actual_vector == pytest.approx(expected_vector)
+
+
+@pytest.mark.asyncio
+async def test_embed_documents_adaptively_splits_input_too_large_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Split Cloudflare code 3030 batches and preserve embedding order."""
+    provider, _, client, _, _ = _build_provider(
+        monkeypatch,
+        batch_size=4,
+    )
+
+    client.post.side_effect = [
+        _input_too_large_response(),
+        _success_response(
+            [
+                [1.0, 0.0],
+                [0.0, 1.0],
+            ]
+        ),
+        _success_response(
+            [
+                [3.0, 4.0],
+                [4.0, 3.0],
+            ]
+        ),
+    ]
+
+    result = await provider.embed_documents(
+        [
+            "one",
+            "two",
+            "three",
+            "four",
+        ]
+    )
+
+    assert client.post.await_count == 3
+    assert [
+        request.kwargs["json"] for request in client.post.await_args_list
+    ] == [
+        {"documents": ["one", "two", "three", "four"]},
+        {"documents": ["one", "two"]},
+        {"documents": ["three", "four"]},
+    ]
+
+    expected = [
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [0.6, 0.8],
+        [0.8, 0.6],
+    ]
+
+    for actual_vector, expected_vector in zip(
+        result,
+        expected,
+        strict=True,
+    ):
+        assert actual_vector == pytest.approx(expected_vector)
+
+
+@pytest.mark.asyncio
+async def test_embed_documents_completes_left_split_before_right_split(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Process recursively split batches depth-first to preserve request order."""
+    provider, _, client, _, _ = _build_provider(
+        monkeypatch,
+        batch_size=4,
+    )
+
+    client.post.side_effect = [
+        _input_too_large_response(),
+        _input_too_large_response(),
+        _success_response([[1.0, 0.0]]),
+        _success_response([[0.0, 1.0]]),
+        _success_response(
+            [
+                [3.0, 4.0],
+                [4.0, 3.0],
+            ]
+        ),
+    ]
+
+    result = await provider.embed_documents(
+        [
+            "one",
+            "two",
+            "three",
+            "four",
+        ]
+    )
+
+    assert [
+        request.kwargs["json"] for request in client.post.await_args_list
+    ] == [
+        {"documents": ["one", "two", "three", "four"]},
+        {"documents": ["one", "two"]},
+        {"documents": ["one"]},
+        {"documents": ["two"]},
+        {"documents": ["three", "four"]},
+    ]
+
+    expected = [
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [0.6, 0.8],
+        [0.8, 0.6],
+    ]
+
+    for actual_vector, expected_vector in zip(
+        result,
+        expected,
+        strict=True,
+    ):
+        assert actual_vector == pytest.approx(expected_vector)
+
+
+@pytest.mark.asyncio
+async def test_embed_documents_does_not_retry_input_too_large_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Split code 3030 immediately instead of retrying the same request."""
+    provider, _, client, _, _ = _build_provider(
+        monkeypatch,
+        batch_size=2,
+        max_attempts=3,
+    )
+
+    sleep = AsyncMock()
+
+    monkeypatch.setattr(
+        provider_module.asyncio,
+        "sleep",
+        sleep,
+    )
+
+    client.post.side_effect = [
+        _input_too_large_response(),
+        _success_response([[1.0, 0.0]]),
+        _success_response([[0.0, 1.0]]),
+    ]
+
+    result = await provider.embed_documents(
+        [
+            "one",
+            "two",
+        ]
+    )
+
+    expected = [
+        [1.0, 0.0],
+        [0.0, 1.0],
+    ]
+
+    for actual_vector, expected_vector in zip(
+        result,
+        expected,
+        strict=True,
+    ):
+        assert actual_vector == pytest.approx(expected_vector)
+
+    assert client.post.await_count == 3
+    sleep.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_embed_documents_raises_when_single_input_is_still_too_large(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fail explicitly when code 3030 persists for one indivisible text."""
+    provider, _, client, _, _ = _build_provider(
+        monkeypatch,
+        batch_size=1,
+    )
+
+    client.post.return_value = _input_too_large_response()
+
+    with pytest.raises(
+        RuntimeError,
+        match="Cloudflare embedding input is too large",
+    ):
+        await provider.embed_documents(
+            [
+                "one oversized document chunk",
+            ]
+        )
+
+    assert client.post.await_count == 1
 
 
 @pytest.mark.asyncio

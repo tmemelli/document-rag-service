@@ -143,3 +143,4 @@ def test_settings_accept_valid_cloudflare_configuration() -> None:
     assert settings.embedding_provider == "cloudflare"
     assert settings.cloudflare_account_id == "test-account-id"
     assert settings.cloudflare_api_token is not None
+    assert settings.cloudflare_embedding_batch_size == 32

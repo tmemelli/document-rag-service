@@ -10,13 +10,18 @@ from transformers import AutoTokenizer
 EmbeddingInputType = Literal["documents", "queries"]
 
 
+class _CloudflareInputTooLargeError(RuntimeError):
+    """Signal that Cloudflare rejected a request because its input was too large."""
+
+
 class CloudflareEmbeddingProvider:
     """
     Generate document and query embeddings through Cloudflare Workers AI.
 
-    The provider owns its HTTP client, batches document requests, applies
-    bounded retries for transient failures, and validates the structure of
-    Cloudflare responses before exposing vectors to the application.
+    The provider owns its HTTP client, batches document requests, adaptively
+    splits batches rejected as too large, applies bounded retries for transient
+    failures, and validates Cloudflare responses before exposing vectors to the
+    application.
 
     Returned embeddings are truncated to the configured dimension and
     L2-normalized so they remain compatible with the vector representation
@@ -54,7 +59,7 @@ class CloudflareEmbeddingProvider:
             dimension: Target embedding dimension after vector truncation.
             max_sequence_length: Maximum supported input length in tokenizer
                 tokens.
-            batch_size: Maximum number of document texts sent in each request.
+            batch_size: Maximum number of document texts attempted per request.
             timeout_seconds: HTTP timeout applied to Cloudflare requests.
             max_attempts: Maximum number of attempts for transient failures.
             retry_base_delay_seconds: Initial delay used for exponential retry
@@ -154,8 +159,11 @@ class CloudflareEmbeddingProvider:
         """
         Generate normalized embeddings for document texts.
 
-        Inputs are divided into bounded batches before being sent to Cloudflare
-        so each request respects the configured provider batch size.
+        The configured batch size is treated as an optimistic upper bound.
+        When Cloudflare rejects a document batch with error code ``3030``
+        (``input too big``), the batch is split in half and each half is
+        processed recursively. The left half is always completed before the
+        right half, preserving the original text-to-embedding order.
 
         Args:
             texts: Document texts to embed.
@@ -169,15 +177,53 @@ class CloudflareEmbeddingProvider:
 
         for start in range(0, len(texts), self._batch_size):
             batch = texts[start : start + self._batch_size]
-
-            batch_embeddings = await self._embed(
-                input_type="documents",
-                texts=batch,
-            )
-
+            batch_embeddings = await self._embed_document_batch_adaptively(batch)
             embeddings.extend(batch_embeddings)
 
         return embeddings
+
+    async def _embed_document_batch_adaptively(
+        self,
+        texts: list[str],
+    ) -> list[list[float]]:
+        """
+        Embed one document batch, recursively splitting provider-oversized input.
+
+        Cloudflare error code ``3030`` represents a deterministic input-size
+        rejection, so retrying the same payload would be wasteful. Instead, the
+        batch is bisected and processed depth-first. This keeps request sizes as
+        large as the provider accepts while preserving input order.
+
+        Args:
+            texts: Non-empty batch of document texts.
+
+        Returns:
+            Embeddings corresponding one-to-one with ``texts`` in original order.
+
+        Raises:
+            RuntimeError: If Cloudflare rejects a single text as too large, or if
+                another provider/request failure occurs.
+        """
+
+        try:
+            return await self._embed(
+                input_type="documents",
+                texts=texts,
+            )
+        except _CloudflareInputTooLargeError:
+            if len(texts) == 1:
+                raise
+
+            midpoint = len(texts) // 2
+
+            left_embeddings = await self._embed_document_batch_adaptively(
+                texts[:midpoint]
+            )
+            right_embeddings = await self._embed_document_batch_adaptively(
+                texts[midpoint:]
+            )
+
+            return left_embeddings + right_embeddings
 
     async def embed_query(
         self,
@@ -250,8 +296,10 @@ class CloudflareEmbeddingProvider:
 
         HTTP 408, 429, and 5xx responses commonly associated with transient
         service conditions are retried. Transport failures are also retried
-        until the configured attempt limit is reached. Non-retryable HTTP
-        errors fail immediately.
+        until the configured attempt limit is reached. Cloudflare error code
+        ``3030`` fails immediately with an internal signal so document batches
+        can be adaptively split instead of retrying the same oversized payload.
+        Other non-retryable HTTP errors fail immediately.
 
         Successful responses are validated for the expected Cloudflare payload
         structure and embedding count before vectors are truncated and
@@ -296,6 +344,13 @@ class CloudflareEmbeddingProvider:
 
             except httpx.HTTPStatusError as exc:
                 status_code = exc.response.status_code
+
+                if self._is_input_too_large_response(exc.response):
+                    raise _CloudflareInputTooLargeError(
+                        "Cloudflare embedding input is too large: "
+                        f"status={status_code} "
+                        f"body={exc.response.text}"
+                    ) from exc
 
                 retryable = (
                     status_code == 408
@@ -360,6 +415,43 @@ class CloudflareEmbeddingProvider:
             raise RuntimeError("Cloudflare returned an unexpected number of embeddings")
 
         return [self._truncate_and_normalize(vector) for vector in data]
+
+    @staticmethod
+    def _is_input_too_large_response(response: httpx.Response) -> bool:
+        """
+        Return whether Cloudflare rejected the request for aggregate input size.
+
+        The Workers AI embedding endpoint reports this condition as HTTP 400
+        with provider error code ``3030``. Invalid or non-JSON error bodies are
+        treated as ordinary HTTP failures.
+
+        Args:
+            response: Cloudflare HTTP response associated with a failed request.
+
+        Returns:
+            ``True`` only when error code ``3030`` is present.
+        """
+
+        if response.status_code != 400:
+            return False
+
+        try:
+            payload = response.json()
+        except ValueError:
+            return False
+
+        if not isinstance(payload, dict):
+            return False
+
+        errors = payload.get("errors")
+
+        if not isinstance(errors, list):
+            return False
+
+        return any(
+            isinstance(error, dict) and error.get("code") == 3030
+            for error in errors
+        )
 
     def _get_retry_delay(
         self,
