@@ -360,6 +360,10 @@ def get_ingestion_service(
     session: DatabaseSession,
     embedding_service: EmbeddingServiceDependency,
     chunking_service: ChunkingServiceDependency,
+    session_factory: Annotated[
+        AsyncSessionFactory,
+        Depends(get_session_factory),
+    ],
 ) -> IngestionService:
     """
     Create a request-scoped document-ingestion service.
@@ -371,15 +375,24 @@ def get_ingestion_service(
         session: Request-scoped database session.
         embedding_service: Shared embedding service.
         chunking_service: Configured chunking service.
+        session_factory: Shared session factory used by the processing
+            heartbeat.
 
     Returns:
         Ingestion service bound to the current request session.
     """
 
+    settings = get_settings()
+
     return IngestionService(
         session,
         embedding_service,
         chunking_service,
+        session_factory=session_factory,
+        processing_lease_seconds=settings.document_processing_lease_seconds,
+        processing_heartbeat_seconds=(
+            settings.document_processing_heartbeat_seconds
+        ),
     )
 
 

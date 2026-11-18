@@ -187,6 +187,8 @@ async def test_ingest_file_content_persists_chunks_embeddings_and_ready_status(
 
     assert persisted_document is not None
     assert persisted_document.status == "ready"
+    assert persisted_document.processing_token is None
+    assert persisted_document.processing_lease_expires_at is None
 
     chunks = await chunk_repository.list_by_document_id(document_id)
 
@@ -325,6 +327,8 @@ async def test_ingestion_failure_marks_document_failed_and_records_error(
 
     assert persisted_document is not None
     assert persisted_document.status == "failed"
+    assert persisted_document.processing_token is None
+    assert persisted_document.processing_lease_expires_at is None
 
     chunks = await chunk_repository.list_by_document_id(document_id)
 

@@ -2,6 +2,8 @@
 Integration tests for DocumentRepository against PostgreSQL.
 """
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -76,6 +78,8 @@ async def test_create_persists_document_with_defaults(
     assert document.mime_type == "application/pdf"
     assert document.checksum == "checksum-create"
     assert document.status == "pending"
+    assert document.processing_token is None
+    assert document.processing_lease_expires_at is None
     assert document.created_at is not None
     assert document.updated_at is not None
 
@@ -262,6 +266,222 @@ async def test_claim_failed_for_retry_is_atomic_and_refreshes_metadata(
     )
 
     assert second_claim is None
+
+
+@pytest.mark.asyncio
+async def test_claim_pending_for_processing_sets_lease_atomically(
+    db_session: AsyncSession,
+) -> None:
+    """Claim pending work once and persist its fencing token and lease."""
+    user = await _create_user(
+        db_session,
+        email="processing-claim@example.com",
+    )
+    document = await _create_document(
+        db_session,
+        user_id=user.id,
+        title="Processing claim",
+    )
+
+    repository = DocumentRepository(db_session)
+    lease_expires_at = datetime.now(UTC) + timedelta(minutes=2)
+
+    claimed = await repository.claim_pending_for_processing(
+        document_id=document.id,
+        user_id=user.id,
+        processing_token="a" * 32,
+        lease_expires_at=lease_expires_at,
+    )
+
+    assert claimed is not None
+    assert claimed.status == "processing"
+    assert claimed.processing_token == "a" * 32
+    assert claimed.processing_lease_expires_at == lease_expires_at
+
+    second_claim = await repository.claim_pending_for_processing(
+        document_id=document.id,
+        user_id=user.id,
+        processing_token="b" * 32,
+        lease_expires_at=lease_expires_at,
+    )
+
+    assert second_claim is None
+
+
+@pytest.mark.asyncio
+async def test_renew_processing_lease_requires_matching_token(
+    db_session: AsyncSession,
+) -> None:
+    """Renew only the worker that still owns the current processing token."""
+    user = await _create_user(
+        db_session,
+        email="lease-renew@example.com",
+    )
+    document = await _create_document(
+        db_session,
+        user_id=user.id,
+        title="Lease renew",
+    )
+
+    repository = DocumentRepository(db_session)
+    first_expiration = datetime.now(UTC) + timedelta(minutes=1)
+
+    await repository.claim_pending_for_processing(
+        document_id=document.id,
+        user_id=user.id,
+        processing_token="a" * 32,
+        lease_expires_at=first_expiration,
+    )
+
+    renewed_expiration = datetime.now(UTC) + timedelta(minutes=2)
+
+    assert await repository.renew_processing_lease(
+        document_id=document.id,
+        user_id=user.id,
+        processing_token="a" * 32,
+        lease_expires_at=renewed_expiration,
+    )
+    assert not await repository.renew_processing_lease(
+        document_id=document.id,
+        user_id=user.id,
+        processing_token="b" * 32,
+        lease_expires_at=renewed_expiration,
+    )
+
+
+@pytest.mark.asyncio
+async def test_recover_interrupted_processing_reclaims_only_stale_lease(
+    db_session: AsyncSession,
+) -> None:
+    """Recover expired processing while leaving a valid lease untouched."""
+    user = await _create_user(
+        db_session,
+        email="lease-recovery@example.com",
+    )
+    stale_document = await _create_document(
+        db_session,
+        user_id=user.id,
+        title="Stale processing",
+    )
+    active_document = await _create_document(
+        db_session,
+        user_id=user.id,
+        title="Active processing",
+    )
+
+    repository = DocumentRepository(db_session)
+
+    await repository.claim_pending_for_processing(
+        document_id=stale_document.id,
+        user_id=user.id,
+        processing_token="a" * 32,
+        lease_expires_at=datetime.now(UTC) - timedelta(seconds=1),
+    )
+    await repository.claim_pending_for_processing(
+        document_id=active_document.id,
+        user_id=user.id,
+        processing_token="b" * 32,
+        lease_expires_at=datetime.now(UTC) + timedelta(minutes=2),
+    )
+
+    recovered = await repository.recover_interrupted_processing(
+        document_id=stale_document.id,
+        user_id=user.id,
+    )
+    active_recovery = await repository.recover_interrupted_processing(
+        document_id=active_document.id,
+        user_id=user.id,
+    )
+
+    assert recovered is not None
+    assert recovered.status == "failed"
+    assert recovered.processing_token is None
+    assert recovered.processing_lease_expires_at is None
+    assert active_recovery is None
+
+
+@pytest.mark.asyncio
+async def test_fail_processing_is_fenced_by_processing_token(
+    db_session: AsyncSession,
+) -> None:
+    """Prevent stale workers from failing a processing attempt they do not own."""
+    user = await _create_user(
+        db_session,
+        email="lease-failure@example.com",
+    )
+    document = await _create_document(
+        db_session,
+        user_id=user.id,
+        title="Lease failure",
+    )
+
+    repository = DocumentRepository(db_session)
+
+    await repository.claim_pending_for_processing(
+        document_id=document.id,
+        user_id=user.id,
+        processing_token="a" * 32,
+        lease_expires_at=datetime.now(UTC) + timedelta(minutes=2),
+    )
+
+    stale_failure = await repository.fail_processing_if_owned(
+        document_id=document.id,
+        user_id=user.id,
+        processing_token="b" * 32,
+    )
+    failed = await repository.fail_processing_if_owned(
+        document_id=document.id,
+        user_id=user.id,
+        processing_token="a" * 32,
+    )
+
+    assert stale_failure is None
+    assert failed is not None
+    assert failed.status == "failed"
+    assert failed.processing_token is None
+    assert failed.processing_lease_expires_at is None
+
+
+@pytest.mark.asyncio
+async def test_complete_processing_is_fenced_by_processing_token(
+    db_session: AsyncSession,
+) -> None:
+    """Prevent a stale worker from completing a document it no longer owns."""
+    user = await _create_user(
+        db_session,
+        email="lease-completion@example.com",
+    )
+    document = await _create_document(
+        db_session,
+        user_id=user.id,
+        title="Lease completion",
+    )
+
+    repository = DocumentRepository(db_session)
+
+    await repository.claim_pending_for_processing(
+        document_id=document.id,
+        user_id=user.id,
+        processing_token="a" * 32,
+        lease_expires_at=datetime.now(UTC) + timedelta(minutes=2),
+    )
+
+    stale_completion = await repository.complete_processing(
+        document_id=document.id,
+        user_id=user.id,
+        processing_token="b" * 32,
+    )
+    completed = await repository.complete_processing(
+        document_id=document.id,
+        user_id=user.id,
+        processing_token="a" * 32,
+    )
+
+    assert stale_completion is None
+    assert completed is not None
+    assert completed.status == "ready"
+    assert completed.processing_token is None
+    assert completed.processing_lease_expires_at is None
 
 
 @pytest.mark.asyncio

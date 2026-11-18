@@ -2,6 +2,8 @@
 Tests for document lifecycle management and persistence coordination.
 """
 
+from datetime import datetime
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -18,6 +20,8 @@ def _build_document(
     title: str = "Test document",
     status: str = "pending",
     checksum: str | None = None,
+    processing_token: str | None = None,
+    processing_lease_expires_at: datetime | None = None,
 ) -> Document:
     """Create an in-memory document for service tests."""
     return Document(
@@ -29,6 +33,8 @@ def _build_document(
         mime_type="application/pdf",
         checksum=checksum,
         status=status,
+        processing_token=processing_token,
+        processing_lease_expires_at=processing_lease_expires_at,
     )
 
 
@@ -50,12 +56,16 @@ def _build_service() -> tuple[
     document_repository.get_by_id = AsyncMock()
     document_repository.update_status = AsyncMock()
     document_repository.claim_failed_for_retry = AsyncMock()
+    document_repository.recover_interrupted_processing = AsyncMock()
     document_repository.delete = AsyncMock()
     document_repository.list_by_ids = AsyncMock()
 
     status_history_repository = MagicMock()
     status_history_repository.create = AsyncMock()
     status_history_repository.get_latest_attempt_number = AsyncMock()
+
+    error_repository = MagicMock()
+    error_repository.create = AsyncMock()
 
     checksum_service = MagicMock()
     checksum_service.sha256 = MagicMock()
@@ -64,6 +74,7 @@ def _build_service() -> tuple[
 
     service._documents = document_repository
     service._status_history = status_history_repository
+    service._errors = error_repository
     service._checksum = checksum_service
 
     return (
@@ -231,17 +242,8 @@ async def test_register_uploaded_document_rejects_ready_duplicate() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "status_value",
-    [
-        "pending",
-        "processing",
-    ],
-)
-async def test_register_uploaded_document_rejects_duplicate_being_processed(
-    status_value: str,
-) -> None:
-    """Reject content whose existing document is pending or processing."""
+async def test_register_uploaded_document_rejects_pending_duplicate() -> None:
+    """Reject duplicate content while the existing document remains pending."""
     (
         service,
         _,
@@ -251,10 +253,9 @@ async def test_register_uploaded_document_rejects_duplicate_being_processed(
     ) = _build_service()
 
     checksum.sha256.return_value = "duplicate-checksum"
-
     documents.get_by_checksum.return_value = _build_document(
         document_id=8,
-        status=status_value,
+        status="pending",
         checksum="duplicate-checksum",
     )
 
@@ -269,6 +270,134 @@ async def test_register_uploaded_document_rejects_duplicate_being_processed(
             mime_type="application/pdf",
             content=b"duplicate",
         )
+
+
+@pytest.mark.asyncio
+async def test_register_uploaded_document_rejects_active_processing_duplicate() -> None:
+    """Keep duplicate upload blocked while the processing lease remains active."""
+    (
+        service,
+        _,
+        documents,
+        history,
+        checksum,
+    ) = _build_service()
+
+    checksum.sha256.return_value = "duplicate-checksum"
+    processing_document = _build_document(
+        document_id=8,
+        status="processing",
+        checksum="duplicate-checksum",
+        processing_token="a" * 32,
+    )
+
+    documents.get_by_checksum.return_value = processing_document
+    documents.recover_interrupted_processing.return_value = None
+    history.get_latest_attempt_number.return_value = 1
+
+    with pytest.raises(
+        ValueError,
+        match=(r"Document content is already being processed " r"\(document_id=8\)"),
+    ):
+        await service.register_uploaded_document(
+            user_id=42,
+            title="Duplicate",
+            file_name="duplicate.pdf",
+            mime_type="application/pdf",
+            content=b"duplicate",
+        )
+
+    documents.recover_interrupted_processing.assert_awaited_once_with(
+        document_id=8,
+        user_id=42,
+    )
+
+
+@pytest.mark.asyncio
+async def test_register_uploaded_document_recovers_interrupted_processing() -> None:
+    """Recover stale processing before reusing the same document for retry."""
+    (
+        service,
+        session,
+        documents,
+        history,
+        checksum,
+    ) = _build_service()
+
+    checksum.sha256.return_value = "interrupted-checksum"
+
+    processing_document = _build_document(
+        document_id=8,
+        status="processing",
+        checksum="interrupted-checksum",
+    )
+    recovered_document = _build_document(
+        document_id=8,
+        status="failed",
+        checksum="interrupted-checksum",
+    )
+    claimed_document = _build_document(
+        document_id=8,
+        status="pending",
+        checksum="interrupted-checksum",
+    )
+
+    documents.get_by_checksum.return_value = processing_document
+    documents.recover_interrupted_processing.return_value = recovered_document
+    documents.claim_failed_for_retry.return_value = claimed_document
+    history.get_latest_attempt_number.return_value = 1
+
+    result = await service.register_uploaded_document(
+        user_id=42,
+        title="Recovered document",
+        file_name="recovered.pdf",
+        mime_type="application/pdf",
+        content=b"interrupted",
+    )
+
+    assert result is claimed_document
+
+    history.create.assert_any_await(
+        document_id=8,
+        from_status="processing",
+        to_status="failed",
+        component="document_service",
+        operation="recover_interrupted_ingestion",
+        attempt_number=1,
+        details={
+            "previous_status": "processing",
+            "recovery_reason": "processing_lease_expired_or_missing",
+            "previous_lease_expires_at": None,
+        },
+    )
+    history.create.assert_any_await(
+        document_id=8,
+        from_status="failed",
+        to_status="pending",
+        component="document_service",
+        operation="retry_uploaded_document",
+        attempt_number=2,
+    )
+
+    errors = cast(MagicMock, service._errors)
+    errors.create.assert_awaited_once_with(
+        document_id=8,
+        component="document_service",
+        operation="recover_interrupted_ingestion",
+        error_type="InterruptedIngestionError",
+        error_code="INGESTION_INTERRUPTED",
+        message="Document ingestion was interrupted before completion.",
+        details={
+            "previous_status": "processing",
+            "recovery_reason": "processing_lease_expired_or_missing",
+            "previous_lease_expires_at": None,
+        },
+        retryable=True,
+        attempt_number=1,
+    )
+
+    session.commit.assert_awaited_once_with()
+    session.refresh.assert_awaited_once_with(claimed_document)
 
 
 @pytest.mark.asyncio

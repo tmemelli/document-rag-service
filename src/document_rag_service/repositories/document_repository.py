@@ -1,6 +1,8 @@
 """Repository for document persistence and user-scoped lookup operations."""
 
-from sqlalchemy import select, update
+from datetime import datetime
+
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from document_rag_service.models.document import Document
@@ -124,6 +126,11 @@ class DocumentRepository:
         """
 
         document.status = status
+
+        if status != "processing":
+            document.processing_token = None
+            document.processing_lease_expires_at = None
+
         await self._session.flush()
         await self._session.refresh(document)
 
@@ -258,6 +265,190 @@ class DocumentRepository:
                 file_name=file_name,
                 mime_type=mime_type,
                 status="pending",
+                processing_token=None,
+                processing_lease_expires_at=None,
+            )
+            .returning(Document)
+        )
+
+        return await self._session.scalar(statement)
+
+    async def claim_pending_for_processing(
+        self,
+        *,
+        document_id: int,
+        user_id: int,
+        processing_token: str,
+        lease_expires_at: datetime,
+    ) -> Document | None:
+        """
+        Atomically claim a pending document for one processing attempt.
+
+        The conditional update prevents two ingestion workers from moving the
+        same pending document into processing concurrently. A successful claim
+        stores a fencing token and lease expiration used to distinguish active
+        work from interrupted work.
+
+        Args:
+            document_id: Identifier of the pending document.
+            user_id: Identifier of the document owner.
+            processing_token: Unique token identifying the processing attempt.
+            lease_expires_at: Expiration timestamp for the current lease.
+
+        Returns:
+            Claimed document in ``processing`` state, or ``None`` when the
+            document is no longer pending.
+        """
+
+        statement = (
+            update(Document)
+            .where(
+                Document.id == document_id,
+                Document.user_id == user_id,
+                Document.status == "pending",
+            )
+            .values(
+                status="processing",
+                processing_token=processing_token,
+                processing_lease_expires_at=lease_expires_at,
+            )
+            .returning(Document)
+        )
+
+        return await self._session.scalar(statement)
+
+    async def renew_processing_lease(
+        self,
+        *,
+        document_id: int,
+        user_id: int,
+        processing_token: str,
+        lease_expires_at: datetime,
+    ) -> bool:
+        """
+        Extend the lease only while the same processing attempt still owns it.
+
+        Returns:
+            ``True`` when the lease was renewed, otherwise ``False``.
+        """
+
+        statement = (
+            update(Document)
+            .where(
+                Document.id == document_id,
+                Document.user_id == user_id,
+                Document.status == "processing",
+                Document.processing_token == processing_token,
+            )
+            .values(
+                processing_lease_expires_at=lease_expires_at,
+            )
+            .returning(Document.id)
+        )
+
+        return await self._session.scalar(statement) is not None
+
+    async def complete_processing(
+        self,
+        *,
+        document_id: int,
+        user_id: int,
+        processing_token: str,
+    ) -> Document | None:
+        """
+        Mark processing ready only when the caller still owns the active lease.
+
+        The token check acts as a fencing guard. A worker whose lease was
+        recovered by a newer attempt cannot commit a stale successful result.
+
+        Returns:
+            Ready document when ownership is still valid, otherwise ``None``.
+        """
+
+        statement = (
+            update(Document)
+            .where(
+                Document.id == document_id,
+                Document.user_id == user_id,
+                Document.status == "processing",
+                Document.processing_token == processing_token,
+            )
+            .values(
+                status="ready",
+                processing_token=None,
+                processing_lease_expires_at=None,
+            )
+            .returning(Document)
+        )
+
+        return await self._session.scalar(statement)
+
+    async def fail_processing_if_owned(
+        self,
+        *,
+        document_id: int,
+        user_id: int,
+        processing_token: str,
+    ) -> Document | None:
+        """
+        Mark processing failed only while the caller still owns its lease.
+
+        Returns:
+            Failed document when ownership is still valid, otherwise ``None``.
+        """
+
+        statement = (
+            update(Document)
+            .where(
+                Document.id == document_id,
+                Document.user_id == user_id,
+                Document.status == "processing",
+                Document.processing_token == processing_token,
+            )
+            .values(
+                status="failed",
+                processing_token=None,
+                processing_lease_expires_at=None,
+            )
+            .returning(Document)
+        )
+
+        return await self._session.scalar(statement)
+
+    async def recover_interrupted_processing(
+        self,
+        *,
+        document_id: int,
+        user_id: int,
+    ) -> Document | None:
+        """
+        Atomically recover a processing document whose lease is stale or absent.
+
+        A missing lease supports recovery of documents created before lease
+        tracking existed. An expired lease indicates that the worker stopped
+        renewing its heartbeat. Active leases are never reclaimed.
+
+        Returns:
+            Document transitioned to ``failed`` when recovery succeeds, or
+            ``None`` when the document remains actively processing or changed
+            state concurrently.
+        """
+
+        statement = (
+            update(Document)
+            .where(
+                Document.id == document_id,
+                Document.user_id == user_id,
+                Document.status == "processing",
+                or_(
+                    Document.processing_lease_expires_at.is_(None),
+                    Document.processing_lease_expires_at <= func.now(),
+                ),
+            )
+            .values(
+                status="failed",
+                processing_token=None,
+                processing_lease_expires_at=None,
             )
             .returning(Document)
         )

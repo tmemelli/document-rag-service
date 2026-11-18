@@ -2,12 +2,17 @@
 Document ingestion orchestration, lifecycle tracking, and chunk persistence.
 """
 
+import asyncio
 import json
 import re
+from contextlib import suppress
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from document_rag_service.db.session import AsyncSessionFactory
 from document_rag_service.repositories.document_chunk_repository import (
     DocumentChunkRepository,
 )
@@ -59,6 +64,10 @@ _URL_CREDENTIAL_PATTERN = re.compile(
 _CLOUDFLARE_STATUS_PATTERN = re.compile(r"\bstatus=(\d{3})\b")
 
 
+class ProcessingLeaseLostError(RuntimeError):
+    """Signal that an ingestion attempt no longer owns its processing lease."""
+
+
 class IngestionService:
     """
     Orchestrate document extraction, chunking, embedding, and persistence.
@@ -78,6 +87,10 @@ class IngestionService:
         session: AsyncSession,
         embedding_service: EmbeddingService,
         chunking_service: ChunkingService,
+        *,
+        session_factory: AsyncSessionFactory | None = None,
+        processing_lease_seconds: int = 120,
+        processing_heartbeat_seconds: int = 30,
     ) -> None:
         """
         Initialize the document ingestion service.
@@ -88,7 +101,26 @@ class IngestionService:
                 generation.
             chunking_service: Service used to split extracted text into bounded
                 chunks.
+            session_factory: Optional application session factory used by the
+                processing-lease heartbeat. Production dependency composition
+                supplies this factory; isolated tests may omit it.
+            processing_lease_seconds: Duration of each processing lease.
+            processing_heartbeat_seconds: Interval used to renew active leases.
+
+        Raises:
+            ValueError: If lease timing configuration is invalid.
         """
+
+        if processing_lease_seconds <= 0:
+            raise ValueError("Processing lease duration must be greater than zero")
+
+        if processing_heartbeat_seconds <= 0:
+            raise ValueError("Processing heartbeat interval must be greater than zero")
+
+        if processing_heartbeat_seconds >= processing_lease_seconds:
+            raise ValueError(
+                "Processing heartbeat interval must be smaller than lease duration"
+            )
 
         self._session = session
         self._documents = DocumentRepository(session)
@@ -98,6 +130,9 @@ class IngestionService:
         self._chunking = chunking_service
         self._text_extraction = TextExtractionService()
         self._embedding = embedding_service
+        self._session_factory = session_factory
+        self._processing_lease_seconds = processing_lease_seconds
+        self._processing_heartbeat_seconds = processing_heartbeat_seconds
 
     async def ingest_file_content(
         self,
@@ -212,15 +247,13 @@ class IngestionService:
         """
         Generate embeddings and persist document chunks transactionally.
 
-        The document is first transitioned to ``processing`` and that lifecycle
-        change is committed before external embedding work begins. Generated
-        embeddings, chunk records, and the final ``ready`` transition are then
-        persisted as one transaction.
+        A pending document is atomically claimed with a unique processing token
+        and a renewable lease. The lease heartbeat proves that the ingestion is
+        still alive while long-running remote embedding work is in progress.
 
-        If embedding generation or database persistence fails, the active
-        transaction is rolled back so partially written chunks are not retained.
-        The document is subsequently transitioned to ``failed`` and the failure
-        is recorded for observability.
+        Completion and failure transitions are fenced by the processing token.
+        If a newer retry recovers an expired lease, the older worker can no
+        longer commit chunks or overwrite the newer lifecycle state.
 
         Args:
             document_id: Identifier of the document receiving the chunks.
@@ -229,40 +262,59 @@ class IngestionService:
                 persist.
 
         Raises:
-            ValueError: If the target document does not exist.
+            ValueError: If the target document does not exist or is no longer
+                pending.
+            ProcessingLeaseLostError: If a newer attempt recovers the lease
+                before this worker commits.
             Exception: Propagates embedding or persistence failures after the
                 database transaction is rolled back and failure state recorded.
         """
 
-        document = await self._documents.get_by_id(
+        existing_document = await self._documents.get_by_id(
             document_id=document_id,
             user_id=user_id,
         )
 
-        if document is None:
+        if existing_document is None:
             raise ValueError(f"Document {document_id} not found")
 
-        from_status = document.status
         attempt_number = (
-            await self._status_history.get_latest_attempt_number(document.id)
+            await self._status_history.get_latest_attempt_number(document_id)
             or 1
         )
+        processing_token = uuid4().hex
 
-        await self._documents.update_status(
-            document=document,
-            status="processing",
+        document = await self._documents.claim_pending_for_processing(
+            document_id=document_id,
+            user_id=user_id,
+            processing_token=processing_token,
+            lease_expires_at=self._next_processing_lease_expiration(),
         )
+
+        if document is None:
+            raise ValueError(
+                f"Document {document_id} is not available for processing"
+            )
 
         await self._status_history.create(
             document_id=document.id,
-            from_status=from_status,
+            from_status="pending",
             to_status="processing",
             component="ingestion_service",
             operation="persist_chunks",
             attempt_number=attempt_number,
+            details={
+                "processing_token": processing_token,
+            },
         )
 
         await self._session.commit()
+
+        heartbeat_task = self._start_processing_heartbeat(
+            document_id=document_id,
+            user_id=user_id,
+            processing_token=processing_token,
+        )
 
         try:
             contents = [content for content, _ in chunks]
@@ -284,10 +336,16 @@ class IngestionService:
                     token_count=token_count,
                 )
 
-            await self._documents.update_status(
-                document=document,
-                status="ready",
+            completed_document = await self._documents.complete_processing(
+                document_id=document_id,
+                user_id=user_id,
+                processing_token=processing_token,
             )
+
+            if completed_document is None:
+                raise ProcessingLeaseLostError(
+                    f"Processing lease lost for document {document_id}"
+                )
 
             await self._status_history.create(
                 document_id=document.id,
@@ -300,6 +358,23 @@ class IngestionService:
 
             await self._session.commit()
 
+        except asyncio.CancelledError as exc:
+            await self._record_failure(
+                document_id=document_id,
+                user_id=user_id,
+                operation="persist_chunks",
+                error_code="INGESTION_INTERRUPTED",
+                message="Document ingestion was interrupted before completion.",
+                exception=exc,
+                processing_token=processing_token,
+                retryable=True,
+            )
+            raise
+
+        except ProcessingLeaseLostError:
+            await self._session.rollback()
+            raise
+
         except Exception as exc:
             await self._record_failure(
                 document_id=document_id,
@@ -308,8 +383,103 @@ class IngestionService:
                 error_code="CHUNK_PERSISTENCE_FAILED",
                 message="Failed to persist document chunks.",
                 exception=exc,
+                processing_token=processing_token,
             )
             raise
+
+        finally:
+            await self._stop_processing_heartbeat(heartbeat_task)
+
+    def _next_processing_lease_expiration(self) -> datetime:
+        """Return the UTC expiration timestamp for a newly renewed lease."""
+
+        return datetime.now(UTC) + timedelta(
+            seconds=self._processing_lease_seconds
+        )
+
+    def _start_processing_heartbeat(
+        self,
+        *,
+        document_id: int,
+        user_id: int,
+        processing_token: str,
+    ) -> asyncio.Task[None] | None:
+        """
+        Start a background lease heartbeat when a session factory is available.
+
+        Unit and integration service tests that construct the service directly
+        may omit a session factory. Production dependency composition supplies
+        one so long-running ingestions continuously renew their lease.
+        """
+
+        if self._session_factory is None:
+            return None
+
+        return asyncio.create_task(
+            self._run_processing_heartbeat(
+                document_id=document_id,
+                user_id=user_id,
+                processing_token=processing_token,
+            )
+        )
+
+    async def _run_processing_heartbeat(
+        self,
+        *,
+        document_id: int,
+        user_id: int,
+        processing_token: str,
+    ) -> None:
+        """
+        Renew an active processing lease until ownership changes or task stops.
+
+        Heartbeat failures intentionally stop renewal instead of crashing the
+        foreground ingestion. If the lease later expires and another request
+        recovers it, the processing token prevents this worker from committing
+        stale results.
+        """
+
+        if self._session_factory is None:
+            return
+
+        while True:
+            await asyncio.sleep(self._processing_heartbeat_seconds)
+
+            try:
+                async with self._session_factory() as heartbeat_session:
+                    repository = DocumentRepository(heartbeat_session)
+
+                    renewed = await repository.renew_processing_lease(
+                        document_id=document_id,
+                        user_id=user_id,
+                        processing_token=processing_token,
+                        lease_expires_at=(
+                            self._next_processing_lease_expiration()
+                        ),
+                    )
+
+                    if not renewed:
+                        await heartbeat_session.rollback()
+                        return
+
+                    await heartbeat_session.commit()
+
+            except Exception:
+                return
+
+    @staticmethod
+    async def _stop_processing_heartbeat(
+        heartbeat_task: asyncio.Task[None] | None,
+    ) -> None:
+        """Cancel and await the optional processing heartbeat task."""
+
+        if heartbeat_task is None:
+            return
+
+        heartbeat_task.cancel()
+
+        with suppress(asyncio.CancelledError):
+            await heartbeat_task
 
     async def _record_failure(
         self,
@@ -319,7 +489,9 @@ class IngestionService:
         operation: str,
         error_code: str,
         message: str,
-        exception: Exception,
+        exception: BaseException,
+        processing_token: str | None = None,
+        retryable: bool = False,
     ) -> None:
         """
         Roll back active work and persist a document ingestion failure.
@@ -336,27 +508,42 @@ class IngestionService:
             message: Safe operation-level summary of the failure.
             exception: Original exception used to record the concrete error
                 type and sanitized technical diagnostics.
+            processing_token: Optional lease token used to fence a processing
+                failure transition.
+            retryable: Whether the failed operation may be safely retried.
         """
 
         await self._session.rollback()
 
-        document = await self._documents.get_by_id(
-            document_id=document_id,
-            user_id=user_id,
-        )
+        if processing_token is not None:
+            document = await self._documents.fail_processing_if_owned(
+                document_id=document_id,
+                user_id=user_id,
+                processing_token=processing_token,
+            )
+            from_status = "processing"
+        else:
+            document = await self._documents.get_by_id(
+                document_id=document_id,
+                user_id=user_id,
+            )
+
+            if document is not None:
+                from_status = document.status
+
+                await self._documents.update_status(
+                    document=document,
+                    status="failed",
+                )
+            else:
+                from_status = None
 
         if document is None:
             return
 
-        from_status = document.status
         attempt_number = (
             await self._status_history.get_latest_attempt_number(document.id)
             or 1
-        )
-
-        await self._documents.update_status(
-            document=document,
-            status="failed",
         )
 
         await self._status_history.create(
@@ -386,7 +573,7 @@ class IngestionService:
             error_code=error_code,
             message=diagnostic_message,
             details=diagnostic_details,
-            retryable=False,
+            retryable=retryable,
             attempt_number=attempt_number,
         )
 
@@ -397,7 +584,7 @@ class IngestionService:
         cls,
         *,
         summary: str,
-        exception: Exception,
+        exception: BaseException,
     ) -> dict[str, Any]:
         """
         Build safe structured diagnostics for a persisted error event.
@@ -418,6 +605,9 @@ class IngestionService:
 
         raw_exception_message = str(exception)
         exception_message = cls._sanitize_diagnostic_text(raw_exception_message)
+
+        if not exception_message:
+            exception_message = "Task cancellation requested."
 
         details: dict[str, Any] = {
             "summary": summary,

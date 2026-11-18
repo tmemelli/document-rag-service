@@ -3,7 +3,9 @@ HTTP integration tests for document routes.
 """
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -18,8 +20,15 @@ from document_rag_service.api.dependencies import (
     get_auth_token_service,
     get_database_session,
     get_embedding_service,
+    get_session_factory,
 )
 from document_rag_service.api.routes import api_router
+from document_rag_service.repositories.document_repository import (
+    DocumentRepository,
+)
+from document_rag_service.repositories.error_event_repository import (
+    ErrorEventRepository,
+)
 from document_rag_service.repositories.user_repository import UserRepository
 from document_rag_service.services.auth_token_service import AuthTokenService
 from document_rag_service.services.document_service import DocumentService
@@ -98,6 +107,7 @@ def _build_test_app(
     app.include_router(api_router)
 
     embedding_service = EmbeddingService(FakeEmbeddingProvider())
+    session_factory = MagicMock()
 
     async def override_database_session() -> AsyncIterator[AsyncSession]:
         """Provide the transaction-scoped integration session."""
@@ -122,6 +132,7 @@ def _build_test_app(
         return None
 
     app.dependency_overrides[get_database_session] = override_database_session
+    app.dependency_overrides[get_session_factory] = lambda: session_factory
     app.dependency_overrides[get_auth_token_service] = override_auth_token_service
     app.dependency_overrides[get_embedding_service] = override_embedding_service
     app.dependency_overrides[enforce_register_rate_limit] = bypass_rate_limit
@@ -276,6 +287,113 @@ async def test_upload_retries_failed_document_without_creating_duplicate(
     assert response.json()["status"] == "ready"
     assert listed.status_code == 200
     assert [item["id"] for item in listed.json()] == [failed_document.id]
+
+
+@pytest.mark.asyncio
+async def test_upload_recovers_interrupted_processing_document(
+    db_session: AsyncSession,
+) -> None:
+    """Re-upload legacy or expired processing content and resume with same id."""
+    email = "api-document-interrupted@example.com"
+    content = _rtf_content(
+        "Interrupted ingestion should be recoverable without creating a duplicate."
+    )
+
+    async with await _build_client(db_session) as client:
+        token = await _register_user(client, email=email)
+
+        user = await UserRepository(db_session).get_by_email(email)
+        assert user is not None
+
+        document_service = DocumentService(db_session)
+        processing_document = await document_service.register_uploaded_document(
+            user_id=user.id,
+            title="Interrupted through API",
+            file_name="interrupted-api.rtf",
+            mime_type="application/rtf",
+            content=content,
+        )
+        await document_service.update_status(
+            document_id=processing_document.id,
+            user_id=user.id,
+            status="processing",
+        )
+
+        response = await client.post(
+            "/v1/documents/upload",
+            headers={"Authorization": f"Bearer {token}"},
+            data={"title": "Interrupted through API"},
+            files={
+                "file": (
+                    "interrupted-api.rtf",
+                    content,
+                    "application/rtf",
+                )
+            },
+        )
+
+        errors = await ErrorEventRepository(db_session).list_by_document_id(
+            processing_document.id
+        )
+
+    assert response.status_code == 201
+    assert response.json()["id"] == processing_document.id
+    assert response.json()["status"] == "ready"
+    assert len(errors) == 1
+    assert errors[0].error_code == "INGESTION_INTERRUPTED"
+    assert errors[0].retryable is True
+
+
+@pytest.mark.asyncio
+async def test_upload_rejects_duplicate_with_active_processing_lease(
+    db_session: AsyncSession,
+) -> None:
+    """Keep duplicate upload blocked while a processing heartbeat is valid."""
+    email = "api-document-active-processing@example.com"
+    content = _rtf_content(
+        "An active processing lease must block a concurrent duplicate upload."
+    )
+
+    async with await _build_client(db_session) as client:
+        token = await _register_user(client, email=email)
+
+        user = await UserRepository(db_session).get_by_email(email)
+        assert user is not None
+
+        document_service = DocumentService(db_session)
+        document = await document_service.register_uploaded_document(
+            user_id=user.id,
+            title="Active processing",
+            file_name="active-processing.rtf",
+            mime_type="application/rtf",
+            content=content,
+        )
+
+        repository = DocumentRepository(db_session)
+        claimed = await repository.claim_pending_for_processing(
+            document_id=document.id,
+            user_id=user.id,
+            processing_token="a" * 32,
+            lease_expires_at=datetime.now(UTC) + timedelta(minutes=2),
+        )
+        assert claimed is not None
+        await db_session.commit()
+
+        response = await client.post(
+            "/v1/documents/upload",
+            headers={"Authorization": f"Bearer {token}"},
+            data={"title": "Active processing"},
+            files={
+                "file": (
+                    "active-processing.rtf",
+                    content,
+                    "application/rtf",
+                )
+            },
+        )
+
+    assert response.status_code == 409
+    assert "already being processed" in response.json()["detail"]
 
 
 @pytest.mark.asyncio

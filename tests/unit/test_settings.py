@@ -39,6 +39,23 @@ def test_settings_accept_valid_local_configuration() -> None:
     assert settings.chunk_size == 1000
     assert settings.chunk_overlap == 200
     assert settings.document_upload_rate_limit_per_minute == 3
+    assert settings.document_processing_lease_seconds == 120
+    assert settings.document_processing_heartbeat_seconds == 30
+
+
+def test_settings_reject_processing_heartbeat_not_smaller_than_lease() -> None:
+    """Require heartbeat renewal to occur before the processing lease expires."""
+    with pytest.raises(
+        ValidationError,
+        match=(
+            "DOCUMENT_PROCESSING_HEARTBEAT_SECONDS must be smaller than "
+            "DOCUMENT_PROCESSING_LEASE_SECONDS"
+        ),
+    ):
+        build_settings(
+            document_processing_lease_seconds=30,
+            document_processing_heartbeat_seconds=30,
+        )
 
 
 @pytest.mark.parametrize("chunk_overlap", [1000, 1001])

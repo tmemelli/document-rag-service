@@ -2,6 +2,7 @@
 Tests for document ingestion orchestration and failure recovery.
 """
 
+import asyncio
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -58,6 +59,9 @@ def _build_service() -> tuple[
     document_repository = MagicMock()
     document_repository.get_by_id = AsyncMock()
     document_repository.update_status = AsyncMock()
+    document_repository.claim_pending_for_processing = AsyncMock()
+    document_repository.complete_processing = AsyncMock()
+    document_repository.fail_processing_if_owned = AsyncMock()
 
     chunk_repository = MagicMock()
     chunk_repository.create = AsyncMock()
@@ -91,6 +95,29 @@ def _build_service() -> tuple[
     service._status_history = status_history_repository
     service._errors = error_repository
     service._text_extraction = text_extraction_service
+
+    async def claim_pending_for_processing(
+        **_: object,
+    ) -> Document | None:
+        return document_repository.get_by_id.return_value
+
+    async def complete_processing(
+        **_: object,
+    ) -> Document | None:
+        return document_repository.get_by_id.return_value
+
+    async def fail_processing_if_owned(
+        **_: object,
+    ) -> Document | None:
+        return document_repository.get_by_id.return_value
+
+    document_repository.claim_pending_for_processing.side_effect = (
+        claim_pending_for_processing
+    )
+    document_repository.complete_processing.side_effect = complete_processing
+    document_repository.fail_processing_if_owned.side_effect = (
+        fail_processing_if_owned
+    )
 
     return (
         service,
@@ -444,7 +471,7 @@ async def test_persist_chunks_rejects_missing_document() -> None:
             ],
         )
 
-    documents.update_status.assert_not_awaited()
+    documents.claim_pending_for_processing.assert_not_awaited()
     history.create.assert_not_awaited()
     embedding.embed_documents.assert_not_awaited()
     chunks.create.assert_not_awaited()
@@ -483,12 +510,14 @@ async def test_persist_chunks_transitions_document_to_processing() -> None:
         ],
     )
 
-    first_status_call = documents.update_status.await_args_list[0]
+    documents.claim_pending_for_processing.assert_awaited_once()
 
-    assert first_status_call.kwargs == {
-        "document": document,
-        "status": "processing",
-    }
+    claim_kwargs = documents.claim_pending_for_processing.await_args.kwargs
+
+    assert claim_kwargs["document_id"] == 1
+    assert claim_kwargs["user_id"] == 42
+    assert len(claim_kwargs["processing_token"]) == 32
+    assert claim_kwargs["lease_expires_at"] is not None
 
     history.create.assert_any_await(
         document_id=1,
@@ -497,6 +526,9 @@ async def test_persist_chunks_transitions_document_to_processing() -> None:
         component="ingestion_service",
         operation="persist_chunks",
         attempt_number=1,
+        details={
+            "processing_token": claim_kwargs["processing_token"],
+        },
     )
 
 
@@ -672,14 +704,13 @@ async def test_persist_chunks_transitions_document_to_ready() -> None:
         ],
     )
 
-    assert documents.update_status.await_count == 2
+    documents.complete_processing.assert_awaited_once()
 
-    second_status_call = documents.update_status.await_args_list[1]
+    complete_kwargs = documents.complete_processing.await_args.kwargs
 
-    assert second_status_call.kwargs == {
-        "document": document,
-        "status": "ready",
-    }
+    assert complete_kwargs["document_id"] == 1
+    assert complete_kwargs["user_id"] == 42
+    assert len(complete_kwargs["processing_token"]) == 32
 
     history.create.assert_any_await(
         document_id=1,
@@ -763,14 +794,19 @@ async def test_persist_chunks_records_embedding_failure() -> None:
 
     assert exc_info.value is embedding_error
 
-    record_failure.assert_awaited_once_with(
-        document_id=1,
-        user_id=42,
-        operation="persist_chunks",
-        error_code="CHUNK_PERSISTENCE_FAILED",
-        message="Failed to persist document chunks.",
-        exception=embedding_error,
-    )
+    record_failure.assert_awaited_once()
+
+    assert record_failure.await_args is not None
+
+    failure_kwargs = record_failure.await_args.kwargs
+
+    assert failure_kwargs["document_id"] == 1
+    assert failure_kwargs["user_id"] == 42
+    assert failure_kwargs["operation"] == "persist_chunks"
+    assert failure_kwargs["error_code"] == "CHUNK_PERSISTENCE_FAILED"
+    assert failure_kwargs["message"] == "Failed to persist document chunks."
+    assert failure_kwargs["exception"] is embedding_error
+    assert len(failure_kwargs["processing_token"]) == 32
 
 
 @pytest.mark.asyncio
@@ -816,14 +852,19 @@ async def test_persist_chunks_records_chunk_repository_failure() -> None:
             ],
         )
 
-    record_failure.assert_awaited_once_with(
-        document_id=1,
-        user_id=42,
-        operation="persist_chunks",
-        error_code="CHUNK_PERSISTENCE_FAILED",
-        message="Failed to persist document chunks.",
-        exception=persistence_error,
-    )
+    record_failure.assert_awaited_once()
+
+    assert record_failure.await_args is not None
+
+    failure_kwargs = record_failure.await_args.kwargs
+
+    assert failure_kwargs["document_id"] == 1
+    assert failure_kwargs["user_id"] == 42
+    assert failure_kwargs["operation"] == "persist_chunks"
+    assert failure_kwargs["error_code"] == "CHUNK_PERSISTENCE_FAILED"
+    assert failure_kwargs["message"] == "Failed to persist document chunks."
+    assert failure_kwargs["exception"] is persistence_error
+    assert len(failure_kwargs["processing_token"]) == 32
 
 
 @pytest.mark.asyncio
@@ -876,6 +917,86 @@ async def test_persist_chunks_records_embedding_count_mismatch() -> None:
 
 
 @pytest.mark.asyncio
+async def test_persist_chunks_records_cancelled_processing_as_retryable() -> None:
+    """Mark a cancelled processing attempt failed before re-raising cancellation."""
+    (
+        service,
+        _,
+        documents,
+        _,
+        _,
+        _,
+        _,
+        embedding,
+    ) = _build_service()
+
+    document = _build_document(status="pending")
+    documents.get_by_id.return_value = document
+    embedding.embed_documents.side_effect = asyncio.CancelledError()
+
+    record_failure = AsyncMock()
+    _replace_method(
+        service,
+        "_record_failure",
+        record_failure,
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await service.persist_chunks(
+            document_id=1,
+            user_id=42,
+            chunks=[
+                ("chunk", 1),
+            ],
+        )
+
+    record_failure.assert_awaited_once()
+
+    assert record_failure.await_args is not None
+
+    failure_kwargs = record_failure.await_args.kwargs
+
+    assert failure_kwargs["error_code"] == "INGESTION_INTERRUPTED"
+    assert failure_kwargs["retryable"] is True
+    assert isinstance(failure_kwargs["exception"], asyncio.CancelledError)
+    assert len(failure_kwargs["processing_token"]) == 32
+
+
+@pytest.mark.asyncio
+async def test_persist_chunks_rolls_back_when_processing_lease_is_lost() -> None:
+    """Reject stale completion when a newer attempt has recovered the lease."""
+    (
+        service,
+        session,
+        documents,
+        _,
+        _,
+        _,
+        _,
+        embedding,
+    ) = _build_service()
+
+    documents.get_by_id.return_value = _build_document(status="pending")
+    documents.complete_processing.side_effect = None
+    documents.complete_processing.return_value = None
+    embedding.embed_documents.return_value = [[0.1]]
+
+    with pytest.raises(
+        RuntimeError,
+        match="Processing lease lost for document 1",
+    ):
+        await service.persist_chunks(
+            document_id=1,
+            user_id=42,
+            chunks=[
+                ("chunk", 1),
+            ],
+        )
+
+    session.rollback.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
 async def test_record_failure_rolls_back_active_transaction_first() -> None:
     """Rollback partial ingestion work before reloading durable document state."""
     (
@@ -922,6 +1043,39 @@ async def test_record_failure_rolls_back_active_transaction_first() -> None:
         "rollback",
         "reload",
     ]
+
+
+@pytest.mark.asyncio
+async def test_record_failure_does_not_clobber_newer_processing_attempt() -> None:
+    """Skip failure persistence after the processing token loses ownership."""
+    (
+        service,
+        session,
+        documents,
+        _,
+        history,
+        errors,
+        _,
+        _,
+    ) = _build_service()
+
+    documents.fail_processing_if_owned.side_effect = None
+    documents.fail_processing_if_owned.return_value = None
+
+    await service._record_failure(
+        document_id=1,
+        user_id=42,
+        operation="persist_chunks",
+        error_code="CHUNK_PERSISTENCE_FAILED",
+        message="Failed to persist document chunks.",
+        exception=RuntimeError("stale worker"),
+        processing_token="a" * 32,
+    )
+
+    session.rollback.assert_awaited_once_with()
+    history.create.assert_not_awaited()
+    errors.create.assert_not_awaited()
+    session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

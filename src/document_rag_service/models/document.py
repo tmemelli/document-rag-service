@@ -41,6 +41,23 @@ class Document(Base):
             "status IN ('pending', 'processing', 'ready', 'failed')",
             name="ck_documents_status",
         ),
+        CheckConstraint(
+            (
+                "status = 'processing' OR "
+                "(processing_token IS NULL AND "
+                "processing_lease_expires_at IS NULL)"
+            ),
+            name="ck_documents_processing_lease_status",
+        ),
+        CheckConstraint(
+            (
+                "(processing_token IS NULL AND "
+                "processing_lease_expires_at IS NULL) OR "
+                "(processing_token IS NOT NULL AND "
+                "processing_lease_expires_at IS NOT NULL)"
+            ),
+            name="ck_documents_processing_lease_pair",
+        ),
     )
 
     id: Mapped[int] = mapped_column(
@@ -94,6 +111,16 @@ class Document(Base):
         String(20),
         nullable=False,
         server_default="pending",
+    )
+
+    processing_token: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+    )
+
+    processing_lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(

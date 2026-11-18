@@ -7,6 +7,9 @@ from document_rag_service.repositories.document_repository import DocumentReposi
 from document_rag_service.repositories.document_status_history_repository import (
     DocumentStatusHistoryRepository,
 )
+from document_rag_service.repositories.error_event_repository import (
+    ErrorEventRepository,
+)
 from document_rag_service.services.checksum_service import ChecksumService
 
 
@@ -32,6 +35,7 @@ class DocumentService:
         self._session = session
         self._documents = DocumentRepository(session)
         self._status_history = DocumentStatusHistoryRepository(session)
+        self._errors = ErrorEventRepository(session)
         self._checksum = ChecksumService()
 
     async def register_uploaded_document(
@@ -80,48 +84,80 @@ class DocumentService:
                     f"(document_id={existing_document.id})"
                 )
 
-            if existing_document.status in {"pending", "processing"}:
+            if existing_document.status == "pending":
                 raise ValueError(
                     f"Document content is already being processed "
                     f"(document_id={existing_document.id})"
                 )
 
-            if existing_document.status == "failed":
+            if existing_document.status == "processing":
                 latest_attempt = (
                     await self._status_history.get_latest_attempt_number(
                         existing_document.id
                     )
                     or 1
                 )
-                next_attempt = latest_attempt + 1
-
-                claimed_document = await self._documents.claim_failed_for_retry(
-                    document_id=existing_document.id,
-                    user_id=user_id,
-                    title=title,
-                    file_name=file_name,
-                    mime_type=mime_type,
+                previous_lease_expires_at = (
+                    existing_document.processing_lease_expires_at
                 )
 
-                if claimed_document is None:
+                recovered_document = (
+                    await self._documents.recover_interrupted_processing(
+                        document_id=existing_document.id,
+                        user_id=user_id,
+                    )
+                )
+
+                if recovered_document is None:
                     raise ValueError(
                         f"Document content is already being processed "
                         f"(document_id={existing_document.id})"
                     )
 
+                recovery_details = {
+                    "previous_status": "processing",
+                    "recovery_reason": "processing_lease_expired_or_missing",
+                    "previous_lease_expires_at": (
+                        previous_lease_expires_at.isoformat()
+                        if previous_lease_expires_at is not None
+                        else None
+                    ),
+                }
+
                 await self._status_history.create(
-                    document_id=claimed_document.id,
-                    from_status="failed",
-                    to_status="pending",
+                    document_id=recovered_document.id,
+                    from_status="processing",
+                    to_status="failed",
                     component="document_service",
-                    operation="retry_uploaded_document",
-                    attempt_number=next_attempt,
+                    operation="recover_interrupted_ingestion",
+                    attempt_number=latest_attempt,
+                    details=recovery_details,
                 )
 
-                await self._session.commit()
-                await self._session.refresh(claimed_document)
+                await self._errors.create(
+                    document_id=recovered_document.id,
+                    component="document_service",
+                    operation="recover_interrupted_ingestion",
+                    error_type="InterruptedIngestionError",
+                    error_code="INGESTION_INTERRUPTED",
+                    message=(
+                        "Document ingestion was interrupted before completion."
+                    ),
+                    details=recovery_details,
+                    retryable=True,
+                    attempt_number=latest_attempt,
+                )
 
-                return claimed_document
+                existing_document = recovered_document
+
+            if existing_document.status == "failed":
+                return await self._retry_failed_upload(
+                    document=existing_document,
+                    user_id=user_id,
+                    title=title,
+                    file_name=file_name,
+                    mime_type=mime_type,
+                )
 
         return await self.register_document(
             user_id=user_id,
@@ -131,6 +167,66 @@ class DocumentService:
             mime_type=mime_type,
             checksum=checksum,
         )
+
+    async def _retry_failed_upload(
+        self,
+        *,
+        document: Document,
+        user_id: int,
+        title: str,
+        file_name: str,
+        mime_type: str,
+    ) -> Document:
+        """
+        Atomically reserve one failed document for the next ingestion attempt.
+
+        Args:
+            document: Failed document being retried.
+            user_id: Identifier of the document owner.
+            title: Title supplied for the new upload attempt.
+            file_name: File name supplied for the new upload attempt.
+            mime_type: MIME type supplied for the new upload attempt.
+
+        Returns:
+            Existing document moved back to ``pending``.
+
+        Raises:
+            ValueError: If another request claims the document first.
+        """
+
+        latest_attempt = (
+            await self._status_history.get_latest_attempt_number(document.id)
+            or 1
+        )
+        next_attempt = latest_attempt + 1
+
+        claimed_document = await self._documents.claim_failed_for_retry(
+            document_id=document.id,
+            user_id=user_id,
+            title=title,
+            file_name=file_name,
+            mime_type=mime_type,
+        )
+
+        if claimed_document is None:
+            raise ValueError(
+                f"Document content is already being processed "
+                f"(document_id={document.id})"
+            )
+
+        await self._status_history.create(
+            document_id=claimed_document.id,
+            from_status="failed",
+            to_status="pending",
+            component="document_service",
+            operation="retry_uploaded_document",
+            attempt_number=next_attempt,
+        )
+
+        await self._session.commit()
+        await self._session.refresh(claimed_document)
+
+        return claimed_document
 
     async def register_document(
         self,

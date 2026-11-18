@@ -63,6 +63,16 @@ class Settings(BaseSettings):
         ge=1,
     )
 
+    # Ingestion recovery
+    document_processing_lease_seconds: int = Field(
+        default=120,
+        ge=2,
+    )
+    document_processing_heartbeat_seconds: int = Field(
+        default=30,
+        ge=1,
+    )
+
     # Chunking
     chunk_size: int = Field(default=1000, ge=1)
     chunk_overlap: int = Field(default=200, ge=0)
@@ -232,6 +242,15 @@ class Settings(BaseSettings):
 
         if self.chunk_overlap >= self.chunk_size:
             raise ValueError("CHUNK_OVERLAP must be smaller than CHUNK_SIZE.")
+
+        if (
+            self.document_processing_heartbeat_seconds
+            >= self.document_processing_lease_seconds
+        ):
+            raise ValueError(
+                "DOCUMENT_PROCESSING_HEARTBEAT_SECONDS must be smaller than "
+                "DOCUMENT_PROCESSING_LEASE_SECONDS."
+            )
 
         if self.embedding_provider == "cloudflare":
             if (
