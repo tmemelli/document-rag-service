@@ -18,7 +18,7 @@ from document_rag_service.repositories.document_chunk_repository import (
 EVALS_DIR = Path(__file__).resolve().parent
 OUTPUT_PATH = EVALS_DIR / "chunks_for_evaluation.json"
 
-DOCUMENT_IDS = tuple(range(1, 9))
+DOCUMENT_IDS = tuple(range(1, 5))
 
 
 async def main() -> None:
